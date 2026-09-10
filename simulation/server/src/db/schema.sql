@@ -27,7 +27,14 @@ CREATE TABLE IF NOT EXISTS agents (
   current_activity     TEXT,
   activity_ends_at_min INTEGER,
   created_at_min       INTEGER NOT NULL,
-  updated_at_min       INTEGER NOT NULL
+  updated_at_min       INTEGER NOT NULL,
+  birth_sim_minute     INTEGER NOT NULL DEFAULT 0,
+  lifespan_years       REAL NOT NULL DEFAULT 90,
+  stage                TEXT NOT NULL DEFAULT 'adult', -- child | adult
+  parent_ids           TEXT NOT NULL DEFAULT '[]', -- JSON array of agent ids
+  spouse_id            TEXT,
+  expecting_since_min  INTEGER,
+  alive                INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS memories (

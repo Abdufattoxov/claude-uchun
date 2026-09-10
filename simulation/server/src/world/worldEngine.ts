@@ -120,6 +120,29 @@ export class WorldEngine {
       .run(loc.id, loc.name, loc.type, loc.x, loc.z, loc.radius, loc.modern ? 1 : 0, this.time.getTotalMinutes());
   }
 
+  /**
+   * A grown child building their own house (see AgentEngine's
+   * "build_house" decision) -- bottom-up, funded from personal savings,
+   * distinct from the shared civic fund below. Scattered in a ring
+   * around the original town so the residential area visibly grows
+   * outward as families multiply.
+   */
+  addPersonalHome(name: string): WorldLocation {
+    const existingHomes = this.dynamicLocations.filter((l) => l.type === "house").length;
+    const angle = (existingHomes * 47) % 360 * (Math.PI / 180);
+    const radius = 24 + Math.floor(existingHomes / 8) * 6;
+    const loc: WorldLocation = {
+      id: `home_${randomUUID()}`,
+      name,
+      type: "house",
+      x: Math.cos(angle) * radius,
+      z: Math.sin(angle) * radius,
+      radius: 3,
+    };
+    this.addLocation(loc);
+    return loc;
+  }
+
   // ---- Civic development: the town grows from agents' own labor ----
 
   getCivicFund(): number {

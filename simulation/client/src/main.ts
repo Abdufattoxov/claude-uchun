@@ -1,7 +1,7 @@
 import { TownScene } from "./scene";
 import { connectWebSocket, fetchAgentDetail, fetchEvents, fetchWorld, injectEvent, setPaused, setSpeed, setWeather } from "./api";
 import type { AgentPublicState, StateMessage } from "./types";
-import { actionTypeLabel, goalKindLabel, needLabel, occupationTitle, relationshipStateLabel, weatherLabel } from "./i18n";
+import { actionTypeLabel, goalKindLabel, lifeStageLabel, needLabel, occupationTitle, relationshipStateLabel, weatherLabel } from "./i18n";
 
 const canvas = document.getElementById("scene") as HTMLCanvasElement;
 const labelLayer = document.createElement("div");
@@ -136,7 +136,7 @@ function renderAgentList(agents: AgentPublicState[]): void {
       agentListEl.appendChild(card);
     }
     card.innerHTML = `
-      <div class="name">${agent.name} <span class="muted">$${agent.money.toFixed(0)}</span></div>
+      <div class="name">${agent.name} <span class="muted">${Math.round(agent.age)} yosh${agent.stage === "child" ? " · " + lifeStageLabel(agent.stage) : ""} · $${agent.money.toFixed(0)}</span></div>
       <div class="activity">${agent.currentActivity}</div>
       ${needBar("hunger", agent.needs.hunger)}
       ${needBar("energy", agent.needs.energy)}
@@ -168,7 +168,8 @@ async function refreshInspector(): Promise<void> {
   const a = detail.agent;
   inspectorContentEl.innerHTML = `
     <h2>${a.name}</h2>
-    <div class="muted">${a.age} yosh &middot; ${occupationTitle(a.occupation, a.skill)} &middot; $${a.money.toFixed(2)}</div>
+    <div class="muted">${Math.round(a.age)} yosh (taxminan ${Math.round(a.lifespanYears)} yil umr ko'radi) &middot; ${a.stage === "child" ? lifeStageLabel(a.stage) : occupationTitle(a.occupation, a.skill)} &middot; $${a.money.toFixed(2)}</div>
+    <div class="muted">${a.spouseId ? "💍 Turmush qurgan" : ""}${a.parentIds.length ? (a.spouseId ? " &middot; " : "") + "👨‍👩‍👧 Ota-onasi bor" : ""}</div>
     <div class="muted">${a.currentActivity}</div>
     <h4>Mahorat</h4>
     ${needBar("skill", a.skill)}
@@ -274,6 +275,16 @@ async function pollEvents(): Promise<void> {
       appendEventLog(`⭐ ${p.name} endi "${p.title}" darajasiga yetdi.`);
     } else if (ev.kind === "goal_completed") {
       appendEventLog(`✅ ${p.name} maqsadiga erishdi: "${p.description}".`);
+    } else if (ev.kind === "married") {
+      appendEventLog(`💍 ${p.aName} va ${p.bName} turmush qurishdi!`);
+    } else if (ev.kind === "child_born") {
+      appendEventLog(`👶 ${p.parentAName} va ${p.parentBName}ning farzandi ${p.childName} dunyoga keldi!`);
+    } else if (ev.kind === "came_of_age") {
+      appendEventLog(`🎓 ${p.name} voyaga yetib, mustaqil hayot boshladi.`);
+    } else if (ev.kind === "agent_death") {
+      appendEventLog(`🕯️ ${p.name} ${p.age} yoshida vafot etdi.`);
+    } else if (ev.kind === "home_built") {
+      appendEventLog(`🏠 ${p.name} o'z uyini qurdi: "${p.locationName}".`);
     }
   }
   if (events.length) lastEventPoll = Math.max(...events.map((e) => e.simMinute));

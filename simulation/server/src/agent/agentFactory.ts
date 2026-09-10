@@ -2,6 +2,7 @@ import type { Agent, AgentSchedulePoint, Personality } from "../types.js";
 import { findLocation } from "../world/locations.js";
 import { randomUUID } from "node:crypto";
 import { ACTIVITY } from "./activityLabels.js";
+import { MINUTES_PER_YEAR, randomLifespanYears } from "./lifeConstants.js";
 
 interface Seed {
   name: string;
@@ -101,6 +102,9 @@ export function createInitialAgents(nowMinute: number): Agent[] {
       id: randomUUID(),
       name: seed.name,
       age: seed.age,
+      birthSimMinute: nowMinute - Math.round(seed.age * MINUTES_PER_YEAR),
+      lifespanYears: randomLifespanYears(),
+      stage: "adult",
       personality: seed.personality,
       needs: { hunger: 80, energy: 85, social: 60, fun: 60, hygiene: 90 },
       emotion: { valence: 0.2, arousal: 0.3, label: "mamnun" },
@@ -111,6 +115,8 @@ export function createInitialAgents(nowMinute: number): Agent[] {
       occupation: seed.occupation,
       homeId: seed.homeId,
       workId: seed.workId,
+      parentIds: [],
+      spouseId: undefined,
       position: { x: home.x, z: home.z },
       currentLocationId: seed.homeId,
       currentActivity: ACTIVITY.sleeping,

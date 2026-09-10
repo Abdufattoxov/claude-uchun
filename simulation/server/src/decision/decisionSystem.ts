@@ -10,7 +10,12 @@ export type ActionType =
   | "socialize"
   | "shop"
   | "relax"
-  | "wander";
+  | "wander"
+  // Life-cycle decisions -- only ever chosen by the agent's own brain
+  // (agent/brain.ts), never by this deterministic instinct fallback.
+  | "propose_marriage"
+  | "want_child"
+  | "build_house";
 
 export interface AgentAction {
   type: ActionType;

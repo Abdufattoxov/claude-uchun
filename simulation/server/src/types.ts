@@ -100,10 +100,17 @@ export interface AgentSchedulePoint {
   activity: string;
 }
 
+export type LifeStage = "child" | "adult";
+
 export interface Agent {
   id: string;
   name: string;
   age: number;
+  /** Sim-minute the agent was born; age is derived from this each tick. */
+  birthSimMinute: number;
+  /** This individual's natural lifespan, randomized around ~85-105 years at birth. */
+  lifespanYears: number;
+  stage: LifeStage;
   personality: Personality;
   needs: Needs;
   emotion: Emotion;
@@ -115,6 +122,11 @@ export interface Agent {
   skill: number;
   homeId: string;
   workId?: string;
+  /** Biological/adoptive parents, if any -- empty for the founding generation. */
+  parentIds: string[];
+  spouseId?: string;
+  /** Sim-minute a pregnancy/gestation began, if one is currently underway. */
+  expectingSinceMin?: number;
   position: { x: number; z: number };
   targetPosition?: { x: number; z: number };
   currentLocationId?: string;
@@ -150,7 +162,12 @@ export type WorldEventKind =
   | "world_object"
   | "civic_development"
   | "goal_completed"
-  | "career_tier_up";
+  | "career_tier_up"
+  | "married"
+  | "child_born"
+  | "came_of_age"
+  | "agent_death"
+  | "home_built";
 
 export interface WorldEvent {
   id: string;

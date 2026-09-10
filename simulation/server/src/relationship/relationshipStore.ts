@@ -80,4 +80,23 @@ export class RelationshipStore {
   rank(state: RelationshipState): number {
     return STATE_ORDER.indexOf(state);
   }
+
+  /**
+   * Explicit state override for relationships affinity alone can't
+   * reach -- marriage ("family") and parent/child bonds, both formed by
+   * a discrete life event rather than accumulated small interactions.
+   */
+  setState(a: string, b: string, state: RelationshipState, nowMinute: number): Relationship {
+    const current = this.get(a, b);
+    const [x, y] = pairKey(a, b);
+    this.db
+      .prepare(
+        `INSERT INTO relationships (agent_a, agent_b, state, affinity, last_interaction_min)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(agent_a, agent_b) DO UPDATE SET
+           state = excluded.state, last_interaction_min = excluded.last_interaction_min`
+      )
+      .run(x, y, state, current.affinity, nowMinute);
+    return { agentA: x, agentB: y, state, affinity: current.affinity, lastInteractionMin: nowMinute };
+  }
 }

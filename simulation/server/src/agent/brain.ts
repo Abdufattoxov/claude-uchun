@@ -1,9 +1,18 @@
 import type { Agent, MemoryRecord, Needs, WorldTime } from "../types.js";
 import type { AgentAction } from "../decision/decisionSystem.js";
 import type { WorldEngine } from "../world/worldEngine.js";
-import { ACTIVITY } from "./activityLabels.js";
+import { ACTIVITY, talkingWithLabel } from "./activityLabels.js";
 import { occupationTitle } from "./labels.js";
+import { HOUSE_BUILD_COST } from "./lifeConstants.js";
 import { llm } from "../llm/llmInterface.js";
+
+/** Life-cycle context the engine computes (it alone knows every agent's
+ * state) and hands to buildDecisionOptions -- still only describing what
+ * is physically/socially possible right now, never what to choose. */
+export interface LifeContext {
+  marriageCandidates?: Array<{ id: string; name: string }>;
+  spouse?: { id: string; name: string; expecting: boolean };
+}
 
 /**
  * This is the agent's actual mind: nobody ranks or scores these
@@ -24,7 +33,8 @@ export interface DecisionOption {
 export function buildDecisionOptions(
   agent: Agent,
   world: WorldEngine,
-  nearby: Array<{ id: string; name: string }>
+  nearby: Array<{ id: string; name: string }>,
+  life?: LifeContext
 ): DecisionOption[] {
   const options: DecisionOption[] = [];
   let n = 1;
@@ -94,6 +104,35 @@ export function buildDecisionOptions(
     });
   }
 
+  // --- Life-cycle options: only offered when physically/socially real,
+  // never ranked or nudged toward -- see LifeContext above. ---
+  for (const candidate of life?.marriageCandidates ?? []) {
+    push(`${candidate.name} ga turmush qurishni taklif qilish`, {
+      type: "propose_marriage",
+      locationId: agent.currentLocationId ?? "square",
+      activityLabel: talkingWithLabel(candidate.name),
+      durationMin: 20,
+      targetAgentId: candidate.id,
+    });
+  }
+  if (life?.spouse && !life.spouse.expecting) {
+    push(`${life.spouse.name} bilan farzand ko'rish orzusida tayyorgarlik ko'rish`, {
+      type: "want_child",
+      locationId: agent.homeId,
+      activityLabel: ACTIVITY.relaxingHome,
+      durationMin: 60,
+      targetAgentId: life.spouse.id,
+    });
+  }
+  if (agent.parentIds.length > 0 && !agent.homeId.startsWith("home_") && agent.money >= HOUSE_BUILD_COST) {
+    push("Ota-ona uyidan chiqib, o'zining alohida uyini qurish", {
+      type: "build_house",
+      locationId: "",
+      activityLabel: ACTIVITY.buildingHome,
+      durationMin: 90,
+    });
+  }
+
   return options;
 }
 
@@ -108,7 +147,13 @@ function describeNeeds(needs: Needs): string {
   ].join(", ");
 }
 
-function personaSystemPrompt(agent: Agent, memories: MemoryRecord[], time: WorldTime, weather: string): string {
+function personaSystemPrompt(
+  agent: Agent,
+  memories: MemoryRecord[],
+  time: WorldTime,
+  weather: string,
+  familyNote?: string
+): string {
   const p = agent.personality;
   const goalsLine = agent.goals.length
     ? agent.goals.map((g) => `- ${g.description} (${Math.round(g.progress * 100)}% bajarilgan)`).join("\n")
@@ -123,10 +168,13 @@ function personaSystemPrompt(agent: Agent, memories: MemoryRecord[], time: World
     `Hozirgi kayfiyatingiz: ${agent.emotion.label}.`,
     `Ehtiyojlaringiz (past qiymat = kuchli ehtiyoj): ${describeNeeds(agent.needs)}.`,
     `Maqsadlaringiz:\n${goalsLine}`,
+    familyNote ? `Oilaviy holatingiz: ${familyNote}` : "",
     `Yodingizda qolganlar:\n${memLine}`,
     `Hozir ${time.day}-kun, soat ${time.hour}:${String(time.minute).padStart(2, "0")}, ob-havo: ${weather}.`,
     "Hech kim sizga nima qilish kerakligini aytmaydi va buyurmaydi -- bu butunlay o'zingizning qaroringiz. O'z his-tuyg'ularingiz, ehtiyojlaringiz, xarakteringiz va maqsadlaringizga tayanib qaror qabul qiling, xuddi haqiqiy odam o'z kunini rejalashtirganidek.",
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export interface BrainDecision {
@@ -148,9 +196,10 @@ export async function decideViaBrain(
   options: DecisionOption[],
   memories: MemoryRecord[],
   time: WorldTime,
-  weather: string
+  weather: string,
+  familyNote?: string
 ): Promise<BrainDecision> {
-  const system = personaSystemPrompt(agent, memories, time, weather);
+  const system = personaSystemPrompt(agent, memories, time, weather, familyNote);
   const menu = options.map((o) => `${o.n}. ${o.label}`).join("\n");
   const user = [
     "Hozir nima qilmoqchisiz? Quyidagi variantlardan birini tanlang -- faqat jismonan mumkin bo'lgan narsalar shu ro'yxatda:",

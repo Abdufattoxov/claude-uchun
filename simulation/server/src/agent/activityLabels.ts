@@ -20,6 +20,9 @@ export const ACTIVITY = {
   talkingWithSomeone: "kimdir bilan suhbatlashmoqda",
   /** Deliberating over what to do next -- no need effects apply while in this state. */
   thinking: "o'ylanib turibdi",
+  /** Children aren't brain-driven yet -- this is their whole "activity". */
+  playing: "uy atrofida o'ynab yuribdi",
+  buildingHome: "o'z uyini qurmoqda",
 } as const;
 
 export function talkingWithLabel(name: string): string {

@@ -12,6 +12,8 @@ import { ACTIVITY, isTalkingActivity, talkingWithLabel, walkingToLabel } from ".
 import { NEED_LABEL_UZ, occupationTitle, skillWageMultiplier, tierFloor } from "./labels.js";
 import { pickNextGoal } from "./goalPool.js";
 import { buildDecisionOptions, decideViaBrain } from "./brain.js";
+import { applyNurture, comingOfAge, createChildAgent } from "./lifecycle.js";
+import { ADULT_AGE_YEARS, CHILD_PREP_COST, GESTATION_MIN, HOUSE_BUILD_COST, ageYears } from "./lifeConstants.js";
 import { randomUUID } from "node:crypto";
 
 const REFLECTION_INTERVAL_MIN = 24 * 60; // once per sim-day per agent
@@ -39,6 +41,9 @@ export interface AgentPublicState {
   id: string;
   name: string;
   age: number;
+  lifespanYears: number;
+  stage: Agent["stage"];
+  spouseId?: string;
   occupation?: string;
   skill: number;
   position: { x: number; z: number };
@@ -105,6 +110,9 @@ export class AgentEngine {
       id: a.id,
       name: a.name,
       age: a.age,
+      lifespanYears: a.lifespanYears,
+      stage: a.stage,
+      spouseId: a.spouseId,
       occupation: a.occupation,
       skill: a.skill,
       position: a.position,
@@ -129,7 +137,14 @@ export class AgentEngine {
   tick(deltaMinutes: number): void {
     const now = this.world.time.getTotalMinutes();
 
+    this.advanceLifeCycle(now);
+
     for (const agent of this.agents.values()) {
+      if (agent.stage === "child") {
+        this.tickChild(agent, deltaMinutes, now);
+        continue;
+      }
+
       this.decayNeeds(agent, deltaMinutes);
       this.stepMovement(agent);
 
@@ -156,6 +171,242 @@ export class AgentEngine {
     }
 
     this.resolveConversations(now);
+  }
+
+  /**
+   * Aging, coming-of-age, gestation completion, and natural death --
+   * run once per tick, before any agent's normal behavior, so nobody
+   * acts on a tick where they've just been born, grown up, or died.
+   */
+  private advanceLifeCycle(now: number): void {
+    const births: string[] = [];
+    const deaths: Agent[] = [];
+
+    for (const agent of this.agents.values()) {
+      agent.age = ageYears(now, agent.birthSimMinute);
+
+      if (agent.stage === "child" && agent.age >= ADULT_AGE_YEARS) {
+        this.performComingOfAge(agent, now);
+      }
+
+      if (agent.age >= agent.lifespanYears) {
+        deaths.push(agent);
+        continue;
+      }
+
+      // Only the lexicographically-smaller id of a couple triggers the
+      // birth, so a shared pregnancy isn't processed twice.
+      if (
+        agent.expectingSinceMin !== undefined &&
+        agent.spouseId &&
+        agent.id < agent.spouseId &&
+        now - agent.expectingSinceMin >= GESTATION_MIN
+      ) {
+        births.push(agent.id);
+      }
+    }
+
+    for (const id of births) {
+      const parent = this.agents.get(id);
+      if (parent) this.performBirth(parent, now);
+    }
+    for (const agent of deaths) {
+      this.performDeath(agent, now);
+    }
+  }
+
+  /** Children aren't brain-driven yet -- they stay near home, cared for
+   * by their parents, while nurture slowly shapes who they'll become. */
+  private tickChild(agent: Agent, deltaMinutes: number, now: number): void {
+    this.decayNeeds(agent, deltaMinutes * 0.5);
+    const home = this.world.findLocation(agent.homeId);
+    if (home) {
+      agent.needs.hunger = clamp(agent.needs.hunger + 0.6 * deltaMinutes);
+      agent.needs.hygiene = clamp(agent.needs.hygiene + 0.3 * deltaMinutes);
+      agent.needs.social = clamp(agent.needs.social + 0.2 * deltaMinutes);
+      agent.currentLocationId = agent.homeId;
+      agent.currentActivity = ACTIVITY.playing;
+      agent.position = { x: home.x + (Math.random() - 0.5) * 2, z: home.z + (Math.random() - 0.5) * 2 };
+    }
+    const parents = agent.parentIds
+      .map((id) => this.agents.get(id))
+      .filter((a): a is Agent => Boolean(a));
+    applyNurture(agent, parents, deltaMinutes);
+    agent.updatedAtMin = now;
+  }
+
+  private performComingOfAge(agent: Agent, now: number): void {
+    comingOfAge(agent, now);
+    for (const parentId of agent.parentIds) {
+      const parent = this.agents.get(parentId);
+      if (!parent) continue;
+      this.memories.add({
+        agentId: parent.id,
+        simMinute: now,
+        kind: "event",
+        description: `Farzandi ${agent.name} voyaga yetib, mustaqil hayot boshladi.`,
+        participants: [agent.id],
+        locationId: parent.currentLocationId,
+        importance: 0.7,
+      });
+    }
+    this.world.logEvent("came_of_age", { agentId: agent.id, name: agent.name });
+  }
+
+  private performBirth(parentA: Agent, now: number): void {
+    const parentB = parentA.spouseId ? this.agents.get(parentA.spouseId) : undefined;
+    if (!parentB) {
+      parentA.expectingSinceMin = undefined;
+      return;
+    }
+    const child = createChildAgent(parentA, parentB, now);
+    this.agents.set(child.id, child);
+    this.extra.set(child.id, {});
+    this.repo.upsert(child);
+
+    parentA.expectingSinceMin = undefined;
+    parentB.expectingSinceMin = undefined;
+
+    this.relationships.setState(parentA.id, child.id, "family", now);
+    this.relationships.setState(parentB.id, child.id, "family", now);
+
+    for (const parent of [parentA, parentB]) {
+      this.memories.add({
+        agentId: parent.id,
+        simMinute: now,
+        kind: "event",
+        description: `${child.name} ismli farzandi dunyoga keldi.`,
+        participants: [child.id],
+        locationId: parent.currentLocationId,
+        importance: 0.95,
+      });
+    }
+    this.world.logEvent("child_born", {
+      parentAId: parentA.id,
+      parentAName: parentA.name,
+      parentBId: parentB.id,
+      parentBName: parentB.name,
+      childId: child.id,
+      childName: child.name,
+    });
+  }
+
+  /**
+   * Natural death: legacy memories for whoever was close to them, and
+   * their savings passed on to children (or a surviving spouse) --
+   * the row is marked dead, never deleted, so lineage/history survives.
+   */
+  private performDeath(agent: Agent, now: number): void {
+    const children = [...this.agents.values()].filter((a) => a.parentIds.includes(agent.id));
+    const spouse = agent.spouseId ? this.agents.get(agent.spouseId) : undefined;
+
+    const heirs = children.length > 0 ? children : spouse ? [spouse] : [];
+    if (heirs.length > 0 && agent.money > 0) {
+      const share = agent.money / heirs.length;
+      for (const heir of heirs) heir.money += share;
+    }
+
+    const notifyIds = new Set<string>();
+    for (const rel of this.relationships.allFor(agent.id)) {
+      if (this.relationships.rank(rel.state) >= this.relationships.rank("friend")) {
+        notifyIds.add(rel.agentA === agent.id ? rel.agentB : rel.agentA);
+      }
+    }
+    for (const child of children) notifyIds.add(child.id);
+    if (spouse) notifyIds.add(spouse.id);
+
+    for (const id of notifyIds) {
+      const other = this.agents.get(id);
+      if (!other) continue;
+      this.memories.add({
+        agentId: other.id,
+        simMinute: now,
+        kind: "event",
+        description: `${agent.name} ${Math.round(agent.age)} yoshida vafot etdi. Uni doim yodda saqlaydi.`,
+        participants: [agent.id],
+        locationId: other.currentLocationId,
+        importance: 0.95,
+      });
+    }
+
+    if (spouse) {
+      spouse.spouseId = undefined;
+      // An in-progress shared pregnancy can't complete without both parents.
+      spouse.expectingSinceMin = undefined;
+    }
+
+    this.world.logEvent("agent_death", { agentId: agent.id, name: agent.name, age: Math.round(agent.age) });
+    this.repo.markDead(agent.id, now);
+    this.agents.delete(agent.id);
+    this.extra.delete(agent.id);
+  }
+
+  /**
+   * A safe simulation mechanic, exactly as specced: no physical process
+   * is modeled here, only a discrete decision (this) followed by a
+   * gestation timer (see advanceLifeCycle) and a birth event.
+   */
+  private startPregnancy(agent: Agent, spouseId: string, now: number): void {
+    const spouse = this.agents.get(spouseId);
+    if (!spouse) return;
+    if (agent.expectingSinceMin !== undefined || spouse.expectingSinceMin !== undefined) return;
+    if (agent.money + spouse.money < CHILD_PREP_COST) return;
+
+    const fromAgent = Math.min(agent.money, CHILD_PREP_COST);
+    const fromSpouse = CHILD_PREP_COST - fromAgent;
+    agent.money -= fromAgent;
+    spouse.money -= fromSpouse;
+    if (fromAgent > 0) this.economy.record(agent.id, "expense", fromAgent, "chaqaloq uchun tayyorgarlik", now);
+    if (fromSpouse > 0) this.economy.record(spouse.id, "expense", fromSpouse, "chaqaloq uchun tayyorgarlik", now);
+
+    agent.expectingSinceMin = now;
+    spouse.expectingSinceMin = now;
+
+    for (const [self, other] of [[agent, spouse] as const, [spouse, agent] as const]) {
+      this.memories.add({
+        agentId: self.id,
+        simMinute: now,
+        kind: "event",
+        description: `${other.name} bilan farzand ko'rishni orzu qilib, tayyorgarlik ko'rdi.`,
+        participants: [other.id],
+        locationId: self.currentLocationId,
+        importance: 0.8,
+      });
+    }
+  }
+
+  private finalizeMarriage(initiator: Agent, targetId: string, now: number): void {
+    const target = this.agents.get(targetId);
+    if (!target || initiator.spouseId || target.spouseId) return;
+
+    initiator.spouseId = target.id;
+    target.spouseId = initiator.id;
+    this.relationships.setState(initiator.id, target.id, "family", now);
+
+    initiator.currentActivity = `${target.name} bilan turmush qurdi`;
+    target.currentActivity = `${initiator.name} bilan turmush qurdi`;
+    initiator.activityEndsAtMin = now + 30;
+    target.activityEndsAtMin = now + 30;
+
+    this.memories.add({
+      agentId: initiator.id,
+      simMinute: now,
+      kind: "event",
+      description: `${target.name} bilan turmush qurdi.`,
+      participants: [target.id],
+      locationId: initiator.currentLocationId,
+      importance: 0.9,
+    });
+    this.memories.add({
+      agentId: target.id,
+      simMinute: now,
+      kind: "event",
+      description: `${initiator.name} bilan turmush qurdi.`,
+      participants: [initiator.id],
+      locationId: target.currentLocationId,
+      importance: 0.9,
+    });
+    this.world.logEvent("married", { a: initiator.id, aName: initiator.name, b: target.id, bName: target.name });
   }
 
   private decayNeeds(agent: Agent, deltaMinutes: number): void {
@@ -201,6 +452,8 @@ export class AgentEngine {
 
     if (action.type === "socialize" && action.targetAgentId) {
       this.tryStartConversation(agent, action.targetAgentId, now);
+    } else if (action.type === "propose_marriage" && action.targetAgentId) {
+      this.finalizeMarriage(agent, action.targetAgentId, now);
     }
     runtime.pendingAction = undefined;
   }
@@ -269,12 +522,35 @@ export class AgentEngine {
       .map((id) => this.agents.get(id))
       .filter((a): a is Agent => Boolean(a))
       .map((a) => ({ id: a.id, name: a.name }));
-    const options = buildDecisionOptions(agent, this.world, nearby);
+
+    const spouse = agent.spouseId ? this.agents.get(agent.spouseId) : undefined;
+    const marriageCandidates = agent.spouseId
+      ? []
+      : nearby.filter((n) => {
+          const other = this.agents.get(n.id);
+          if (!other || other.spouseId || other.stage !== "adult") return false;
+          return this.relationships.get(agent.id, n.id).state === "partner";
+        });
+    const childrenCount = [...this.agents.values()].filter((a) => a.parentIds.includes(agent.id)).length;
+    const familyNote = [
+      `Yoshingiz: ${Math.round(agent.age)} (taxminiy umr: ${Math.round(agent.lifespanYears)} yil).`,
+      spouse ? `Turmush o'rtog'ingiz: ${spouse.name}.` : "Hali turmush qurmagansiz.",
+      childrenCount > 0 ? `${childrenCount} ta farzandingiz bor.` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const options = buildDecisionOptions(agent, this.world, nearby, {
+      marriageCandidates,
+      spouse: spouse
+        ? { id: spouse.id, name: spouse.name, expecting: Boolean(agent.expectingSinceMin || spouse.expectingSinceMin) }
+        : undefined,
+    });
     const memories = this.memories.recentShortTerm(agent.id, 6);
     const time = this.world.time.snapshot();
     const weather = this.world.getWeather();
 
-    decideViaBrain(agent, options, memories, time, weather)
+    decideViaBrain(agent, options, memories, time, weather, familyNote)
       .then(({ option, reason, provider }) => {
         this.commitDecision(agent, previousActivity, option.action, reason, "llm");
         this.world.logEvent("admin_message", { kind: "thought", agent: agent.name, line: reason, provider });
@@ -324,6 +600,30 @@ export class AgentEngine {
         agent.money -= cost;
         this.economy.record(agent.id, "expense", cost, "do'konda xarid", now);
       }
+    }
+    if (action.type === "want_child" && action.targetAgentId) {
+      this.startPregnancy(agent, action.targetAgentId, now);
+    }
+    if (action.type === "build_house") {
+      // The location doesn't exist until the agent actually decides to
+      // build it -- create it now, then let the normal movement flow
+      // below walk them to their brand-new home.
+      const built = this.world.addPersonalHome(`${agent.name} oilasi uyi`);
+      agent.money -= HOUSE_BUILD_COST;
+      agent.homeId = built.id;
+      agent.schedule = defaultSchedule(built.id, agent.workId ?? built.id);
+      this.economy.record(agent.id, "expense", HOUSE_BUILD_COST, "yangi uy qurish", now);
+      this.memories.add({
+        agentId: agent.id,
+        simMinute: now,
+        kind: "event",
+        description: "Ota-ona uyidan chiqib, o'zining alohida uyini qurdi.",
+        participants: [],
+        locationId: built.id,
+        importance: 0.8,
+      });
+      this.world.logEvent("home_built", { agentId: agent.id, name: agent.name, locationId: built.id, locationName: built.name });
+      action = { ...action, locationId: built.id, activityLabel: ACTIVITY.relaxingHome };
     }
 
     const loc = this.world.findLocation(action.locationId);

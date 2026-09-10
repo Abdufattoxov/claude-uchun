@@ -15,6 +15,25 @@ export function occupationLabel(occupation: string | undefined): string {
   return OCCUPATION_LABEL_UZ[occupation] ?? occupation;
 }
 
+/** Which workplace a given occupation reports to -- used when a child
+ * comes of age and picks up their first job. */
+const OCCUPATION_WORKPLACE: Record<string, string> = {
+  baker: "bakery",
+  farmer: "farm",
+  carpenter: "workshop",
+  shopkeeper: "general_store",
+  cafe_barista: "cafe",
+};
+
+export function randomOccupation(): string {
+  const keys = Object.keys(OCCUPATION_WORKPLACE);
+  return keys[Math.floor(Math.random() * keys.length)];
+}
+
+export function workplaceForOccupation(occupation: string): string {
+  return OCCUPATION_WORKPLACE[occupation] ?? "general_store";
+}
+
 export const NEED_LABEL_UZ: Record<keyof Needs, string> = {
   hunger: "ochlik",
   energy: "energiya",

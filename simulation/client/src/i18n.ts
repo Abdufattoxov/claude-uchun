@@ -91,7 +91,14 @@ export const ACTION_TYPE_UZ: Record<string, string> = {
   shop: "xarid qilish",
   relax: "dam olish",
   wander: "sayr qilish",
+  propose_marriage: "turmush qurishni taklif qilish",
+  want_child: "farzand ko'rish orzusi",
+  build_house: "o'z uyini qurish",
 };
+
+export function lifeStageLabel(stage: string): string {
+  return stage === "child" ? "bola" : "kattalar";
+}
 
 export function actionTypeLabel(type: string): string {
   return ACTION_TYPE_UZ[type] ?? type;

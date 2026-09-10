@@ -53,10 +53,15 @@ export interface Goal {
   progress: number;
 }
 
+export type LifeStage = "child" | "adult";
+
 export interface AgentPublicState {
   id: string;
   name: string;
   age: number;
+  lifespanYears: number;
+  stage: LifeStage;
+  spouseId?: string;
   occupation?: string;
   skill: number;
   position: { x: number; z: number };
@@ -98,7 +103,13 @@ export interface RelationshipView {
 }
 
 export interface AgentDetail {
-  agent: AgentPublicState & { beliefs: string[]; personality: Record<string, number>; homeId: string; workId?: string };
+  agent: AgentPublicState & {
+    beliefs: string[];
+    personality: Record<string, number>;
+    homeId: string;
+    workId?: string;
+    parentIds: string[];
+  };
   memories: { shortTerm: MemoryRecord[]; longTerm: MemoryRecord[] };
   relationships: RelationshipView[];
   transactions: Array<{ simMinute: number; kind: string; amount: number; reason: string }>;
