@@ -46,19 +46,29 @@ export async function injectEvent(description: string): Promise<{ reactions: Arr
   return res.json();
 }
 
-export function connectWebSocket(onMessage: (msg: StateMessage) => void): WebSocket {
+export interface WebSocketHandlers {
+  onMessage: (msg: StateMessage) => void;
+  /** Fired once the socket actually connects (including on reconnect). */
+  onOpen?: () => void;
+  /** Fired when the socket drops -- a reconnect attempt is always scheduled regardless. */
+  onClose?: () => void;
+}
+
+export function connectWebSocket(handlers: WebSocketHandlers): WebSocket {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onopen = () => handlers.onOpen?.();
   ws.onmessage = (ev) => {
     try {
       const msg = JSON.parse(ev.data) as StateMessage;
-      if (msg.type === "state") onMessage(msg);
+      if (msg.type === "state") handlers.onMessage(msg);
     } catch {
       /* ignore malformed frame */
     }
   };
   ws.onclose = () => {
-    setTimeout(() => connectWebSocket(onMessage), 1500);
+    handlers.onClose?.();
+    setTimeout(() => connectWebSocket(handlers), 1500);
   };
   return ws;
 }

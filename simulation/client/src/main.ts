@@ -26,6 +26,7 @@ const eventSubmitBtn = document.getElementById("event-submit") as HTMLButtonElem
 const eventLogEl = document.getElementById("event-log")!;
 const civicNextEl = document.getElementById("civic-next")!;
 const civicBarFillEl = document.getElementById("civic-bar-fill") as HTMLElement;
+const connectionBannerEl = document.getElementById("connection-banner")!;
 
 let paused = false;
 let selectedAgentId: string | null = null;
@@ -33,14 +34,39 @@ let latestAgents: AgentPublicState[] = [];
 let lastEventPoll = 0;
 let dropdownsSynced = false;
 
+/**
+ * The backend (simulation/server) is a separate process the viewer has
+ * to actually have running -- a very common first-run snag is opening
+ * the client alone. Retry with backoff and show a clear banner instead
+ * of a silently blank/black scene, which gives no clue what's wrong.
+ */
+async function fetchWorldWithRetry(): ReturnType<typeof fetchWorld> {
+  let delayMs = 1000;
+  for (;;) {
+    try {
+      const world = await fetchWorld();
+      connectionBannerEl.classList.add("hidden");
+      return world;
+    } catch {
+      connectionBannerEl.classList.remove("hidden");
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      delayMs = Math.min(delayMs * 1.5, 8000);
+    }
+  }
+}
+
 async function bootstrap() {
-  const world = await fetchWorld();
+  const world = await fetchWorldWithRetry();
   scene.buildTown(world.locations);
   scene.setOnAgentClick((id) => selectAgent(id));
   scene.start();
   updateCivicPanel(world.civicFund, world.nextMilestone);
 
-  connectWebSocket(onState);
+  connectWebSocket({
+    onMessage: onState,
+    onOpen: () => connectionBannerEl.classList.add("hidden"),
+    onClose: () => connectionBannerEl.classList.remove("hidden"),
+  });
   pollEvents();
   setInterval(pollEvents, 4000);
   setInterval(refreshCivicPanel, 5000);
@@ -62,9 +88,14 @@ function updateCivicPanel(fund: number, next: { name: string; threshold: number 
 }
 
 async function refreshCivicPanel(): Promise<void> {
-  const world = await fetchWorld();
-  updateCivicPanel(world.civicFund, world.nextMilestone);
-  scene.addLocations(world.locations);
+  try {
+    const world = await fetchWorld();
+    connectionBannerEl.classList.add("hidden");
+    updateCivicPanel(world.civicFund, world.nextMilestone);
+    scene.addLocations(world.locations);
+  } catch {
+    connectionBannerEl.classList.remove("hidden");
+  }
 }
 
 function onState(msg: StateMessage): void {
@@ -214,7 +245,14 @@ eventSubmitBtn.addEventListener("click", async () => {
 });
 
 async function pollEvents(): Promise<void> {
-  const events = await fetchEvents(lastEventPoll);
+  let events;
+  try {
+    events = await fetchEvents(lastEventPoll);
+    connectionBannerEl.classList.add("hidden");
+  } catch {
+    connectionBannerEl.classList.remove("hidden");
+    return;
+  }
   let sawCivicDevelopment = false;
   for (const ev of events.slice().reverse()) {
     if (ev.simMinute <= lastEventPoll) continue;
