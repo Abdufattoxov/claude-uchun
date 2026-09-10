@@ -3,12 +3,20 @@
 A small, runnable 3D town simulation where a handful of autonomous
 agents live out daily routines — waking up, working, eating, resting,
 running into each other, forming relationships, earning and spending
-money — driven by a deterministic needs/goals engine plus an optional
-local LLM for dialogue and reasoning about unusual events.
+money — where each agent's own reasoning (a real local LLM, when one
+is connected) decides what they do and why, not a hardcoded script.
 
 This lives in `simulation/` inside the repo, alongside (and independent
 of) the existing content-writing files at the repo root — nothing there
 was touched.
+
+> **Connect Ollama for agents to actually think.** Every decision an
+> agent makes is handed to its own "brain" (see below) -- but that
+> brain only *reasons* when a real local model is reachable. Without
+> Ollama running, agents fall back to plain instinct (the deterministic
+> utility scoring in `decisionSystem.ts`) for every decision -- still
+> autonomous and fully functional, just not deliberative. See
+> "Configuring the LLM" below to turn real thinking on.
 
 > **Scientific note:** agents simulate emotions, beliefs, and
 > decision-making computationally. Nothing here implies real
@@ -23,11 +31,45 @@ was touched.
 | 2. 3D world | ✅ | `client/` — three.js town, day/night, weather, roads |
 | 3. 5 autonomous agents | ✅ | Identity, personality, needs, goals, schedules |
 | 4. Persistent memory | ✅ | SQLite-backed short/long-term memory, scored retrieval |
-| 5. Decision system + LLM interface | ✅ | Utility AI + pluggable LLM (Ollama / deterministic fallback) |
+| 5. Decision system + LLM interface | ✅ | Agent's own LLM "brain" chooses freely from physically-available options; utility scoring demoted to instinct fallback — see below |
 | 6. Communication & relationships | ✅ | Co-located agents converse; relationship state machine |
 | Admin dashboard + unknown events | ✅ | Web UI: inspect agents, control time/weather, inject events |
 | Self-improvement & civic development | ✅ | Agents grow career skill and complete/replace goals; the town itself expands from their collective labor — see below |
 | 7-11 (economy depth, family/generations, 10k-agent scaling) | 📋 Planned | See `ROADMAP.md` |
+
+### Every agent has its own mind, not a script
+
+`decisionSystem.ts` used to *be* the decision-maker: a hand-tuned
+formula that scored candidate actions and picked the winner. It's now
+only the **instinct** an agent falls back on when nothing else is
+available -- the actual decision-maker is `agent/brain.ts`.
+
+At every decision point (idle, activity finished, arrived somewhere),
+`AgentEngine.beginDecision`:
+1. Puts the agent into a brief, visible "o'ylanib turibdi" (thinking)
+   pause -- they stop, they don't act on autopilot.
+2. Builds the *physical* menu of what someone standing here, with this
+   job, these needs, and these people nearby, could concretely go do
+   (`buildDecisionOptions`) -- this is the only place anything is
+   "given" to the agent, and it's a list of real-world possibilities,
+   never a ranking of them.
+3. Hands that menu, plus the agent's full personality, needs, goals,
+   beliefs, and recent memories, to `decideViaBrain`, which asks a real
+   model to choose -- in character, in its own words, for its own
+   reasons. Nothing here tells the model *when* to work, sleep, or
+   socialize; it decides that itself, the way a person weighs their own
+   day.
+4. Commits whichever option the model picked, logging its stated
+   reason verbatim (visible in the dashboard's "So'nggi qarorlar" and
+   the 🧠 event-log entries) -- not a synthetic explanation I wrote.
+
+If no model answers in a parseable way (most commonly: no Ollama
+running, so the zero-cost `FallbackProvider` responds instead), the
+agent's instinct (`decisionSystem.ts`'s utility scoring) takes over for
+just that one decision -- the simulation is always fully autonomous and
+runnable, but genuine deliberation requires a connected model. This
+mirrors System-1/System-2 thinking: habit when you can't stop to
+think, judgment when you can.
 
 ### Self-improvement and civic development
 
@@ -242,7 +284,9 @@ about with their own beliefs.
 
 ```bash
 cd simulation/server
-npm test          # vitest: time system, world persistence, agent tick loop, decision logging
+npm test          # vitest: time system, world persistence, agent tick loop, decision logging,
+                  # the LLM-brain decision path (mocked model + parse-failure fallback),
+                  # skill/goal/civic-development growth over long simulated runs
 npm run typecheck
 ```
 

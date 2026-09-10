@@ -11,6 +11,7 @@ import { generateConversationLine, generateReflection, interpretUnknownEvent } f
 import { ACTIVITY, isTalkingActivity, talkingWithLabel, walkingToLabel } from "./activityLabels.js";
 import { NEED_LABEL_UZ, occupationTitle, skillWageMultiplier, tierFloor } from "./labels.js";
 import { pickNextGoal } from "./goalPool.js";
+import { buildDecisionOptions, decideViaBrain } from "./brain.js";
 import { randomUUID } from "node:crypto";
 
 const REFLECTION_INTERVAL_MIN = 24 * 60; // once per sim-day per agent
@@ -53,6 +54,8 @@ interface RuntimeExtra {
   pendingAction?: AgentAction;
   talkingWith?: string;
   lastReflectionMin?: number;
+  /** True while the agent's own brain (LLM) is deliberating over what to do next. */
+  thinking?: boolean;
 }
 
 export class AgentEngine {
@@ -62,7 +65,10 @@ export class AgentEngine {
   readonly memories: MemoryStore;
   readonly relationships: RelationshipStore;
   readonly economy: EconomyStore;
-  private readonly recentDecisions: Map<string, { simMinute: number; action: string; reason: string }[]> = new Map();
+  private readonly recentDecisions: Map<
+    string,
+    { simMinute: number; action: string; reason: string; source: "llm" | "utility" }[]
+  > = new Map();
 
   constructor(private readonly db: Database.Database, private readonly world: WorldEngine) {
     this.repo = new AgentRepository(db);
@@ -135,11 +141,14 @@ export class AgentEngine {
       }
 
       const needsDecision =
-        arrived && (agent.activityEndsAtMin === undefined || now >= agent.activityEndsAtMin) && !runtime.talkingWith;
+        arrived &&
+        (agent.activityEndsAtMin === undefined || now >= agent.activityEndsAtMin) &&
+        !runtime.talkingWith &&
+        !runtime.thinking;
 
       if (needsDecision) {
         this.updateGoals(agent, now);
-        this.makeDecision(agent, now);
+        this.beginDecision(agent, now);
       }
 
       this.maybeReflect(agent, now);
@@ -232,19 +241,71 @@ export class AgentEngine {
     this.world.logEvent("career_tier_up", { agentId: agent.id, name: agent.name, title });
   }
 
-  private makeDecision(agent: Agent, now: number): void {
-    const nearbyAgentIds = this.nearbyAgents(agent);
-    const action = decideNextAction({
-      agent,
-      time: this.world.time.snapshot(),
-      nearbyAgentIds,
-      leisureLocations: this.world.leisureLocations(),
-    });
+  /**
+   * This is where an agent's own mind takes over: it's handed off to
+   * decideViaBrain (agent/brain.ts), which lets a real model reason
+   * through the agent's needs/personality/goals/memories and choose
+   * for itself -- nothing here ranks the options for them. The agent
+   * visibly pauses ("thinking") for the (usually few-second) duration
+   * of that reasoning rather than freezing the whole tick loop, since
+   * this is awaited per-agent, not blocking other agents' ticks.
+   *
+   * decisionSystem.ts's utility scoring is kept only as the instinct
+   * agents fall back on when no real model answers in a parseable way
+   * (e.g. the zero-cost FallbackProvider, which never runs when Ollama
+   * is reachable) -- the same way a person falls back on habit when
+   * they can't stop to deliberate.
+   */
+  private beginDecision(agent: Agent, now: number): void {
+    const runtime = this.extra.get(agent.id)!;
+    if (runtime.thinking) return;
+    runtime.thinking = true;
+    const previousActivity = agent.currentActivity;
+    agent.currentActivity = ACTIVITY.thinking;
+    agent.activityEndsAtMin = undefined;
 
-    // Settle wages if finishing a work shift (fixed 4h shifts, see decisionSystem).
+    const nearbyAgentIds = this.nearbyAgents(agent);
+    const nearby = nearbyAgentIds
+      .map((id) => this.agents.get(id))
+      .filter((a): a is Agent => Boolean(a))
+      .map((a) => ({ id: a.id, name: a.name }));
+    const options = buildDecisionOptions(agent, this.world, nearby);
+    const memories = this.memories.recentShortTerm(agent.id, 6);
+    const time = this.world.time.snapshot();
+    const weather = this.world.getWeather();
+
+    decideViaBrain(agent, options, memories, time, weather)
+      .then(({ option, reason, provider }) => {
+        this.commitDecision(agent, previousActivity, option.action, reason, "llm");
+        this.world.logEvent("admin_message", { kind: "thought", agent: agent.name, line: reason, provider });
+      })
+      .catch(() => {
+        const fallback = decideNextAction({
+          agent,
+          time,
+          nearbyAgentIds,
+          leisureLocations: this.world.leisureLocations(),
+        });
+        this.commitDecision(agent, previousActivity, fallback, describeReason(agent, fallback), "utility");
+      })
+      .finally(() => {
+        runtime.thinking = false;
+      });
+  }
+
+  private commitDecision(
+    agent: Agent,
+    previousActivity: string,
+    action: AgentAction,
+    reason: string,
+    source: "llm" | "utility"
+  ): void {
+    const now = this.world.time.getTotalMinutes();
+
+    // Settle wages if finishing a work shift (fixed 4h shifts, see decisionSystem/brain).
     // Skill (grown continuously during the shift, see growSkill) raises the wage --
     // and a slice of every wage funds the town's own civic development.
-    if (agent.currentActivity === ACTIVITY.working && agent.occupation) {
+    if (previousActivity === ACTIVITY.working && agent.occupation) {
       const pay = Math.round(wageFor(agent.occupation) * skillWageMultiplier(agent.skill) * 4 * 100) / 100;
       agent.money += pay;
       this.economy.record(agent.id, "income", pay, `${occupationTitle(agent.occupation, agent.skill)} sifatida ish haqi`, now);
@@ -278,7 +339,7 @@ export class AgentEngine {
       agent.activityEndsAtMin = undefined;
     }
 
-    this.logDecision(agent.id, now, action.type, describeReason(agent, action));
+    this.logDecision(agent.id, now, action.type, reason, source);
   }
 
   /**
@@ -438,13 +499,13 @@ export class AgentEngine {
     }
   }
 
-  private logDecision(agentId: string, simMinute: number, action: string, reason: string): void {
+  private logDecision(agentId: string, simMinute: number, action: string, reason: string, source: "llm" | "utility"): void {
     const id = randomUUID();
     this.db
       .prepare(`INSERT INTO decisions_log (id, agent_id, sim_minute, action, reason, source) VALUES (?, ?, ?, ?, ?, ?)`)
-      .run(id, agentId, simMinute, action, reason, "utility");
+      .run(id, agentId, simMinute, action, reason, source);
     const list = this.recentDecisions.get(agentId) ?? [];
-    list.unshift({ simMinute, action, reason });
+    list.unshift({ simMinute, action, reason, source });
     this.recentDecisions.set(agentId, list.slice(0, 10));
   }
 

@@ -1,15 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { openDatabase } from "../src/db/index.js";
 import { SimulationController } from "../src/controller/simulationController.js";
+import { runTicks } from "./helpers.js";
 
 describe("Self-improvement and civic development", () => {
-  it("agents grow skill while working and eventually tier up", () => {
+  it("agents grow skill while working and eventually tier up", async () => {
     const db = openDatabase({ file: ":memory:" });
     const controller = new SimulationController(db);
     controller.setSpeed(240);
 
     const startingSkill = controller.agents.list()[0].skill;
-    for (let i = 0; i < 2500; i++) controller.tick();
+    await runTicks(controller, 2500);
 
     const grown = controller.agents.list().some((a) => a.skill > startingSkill + 15);
     expect(grown).toBe(true);
@@ -20,7 +21,7 @@ describe("Self-improvement and civic development", () => {
     expect(tierUps).toBeGreaterThan(0);
   });
 
-  it("completed goals are replaced, not just left at 100%", () => {
+  it("completed goals are replaced, not just left at 100%", async () => {
     const db = openDatabase({ file: ":memory:" });
     const controller = new SimulationController(db);
     controller.setSpeed(240);
@@ -28,7 +29,7 @@ describe("Self-improvement and civic development", () => {
     const agent = controller.agents.list()[0];
     const originalGoalIds = new Set(agent.goals.map((g) => g.id));
 
-    for (let i = 0; i < 2500; i++) controller.tick();
+    await runTicks(controller, 2500);
 
     const completions = (
       db.prepare("SELECT COUNT(*) as c FROM world_events WHERE kind = 'goal_completed'").get() as { c: number }
@@ -42,13 +43,13 @@ describe("Self-improvement and civic development", () => {
     }
   });
 
-  it("the town literally grows: civic fund crosses a milestone and a new building appears", () => {
+  it("the town literally grows: civic fund crosses a milestone and a new building appears", async () => {
     const db = openDatabase({ file: ":memory:" });
     const controller = new SimulationController(db);
     controller.setSpeed(240);
 
     const initialLocationCount = controller.world.allLocations().length;
-    for (let i = 0; i < 2500; i++) controller.tick();
+    await runTicks(controller, 2500);
 
     expect(controller.world.getCivicFund()).toBeGreaterThan(0);
     expect(controller.world.allLocations().length).toBeGreaterThan(initialLocationCount);

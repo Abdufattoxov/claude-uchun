@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { openDatabase } from "../src/db/index.js";
 import { SimulationController } from "../src/controller/simulationController.js";
+import { runTicks } from "./helpers.js";
 
 describe("SimulationController + AgentEngine", () => {
   it("creates 5 initial agents", () => {
@@ -9,16 +10,14 @@ describe("SimulationController + AgentEngine", () => {
     expect(controller.agents.list().length).toBe(5);
   });
 
-  it("advances time, keeps needs in bounds, and moves agents over many ticks", () => {
+  it("advances time, keeps needs in bounds, and moves agents over many ticks", async () => {
     const db = openDatabase({ file: ":memory:" });
     const controller = new SimulationController(db);
     controller.setSpeed(60);
 
     const initialPositions = controller.agents.list().map((a) => ({ ...a.position }));
 
-    for (let i = 0; i < 300; i++) {
-      controller.tick();
-    }
+    await runTicks(controller, 300);
 
     for (const agent of controller.agents.list()) {
       for (const value of Object.values(agent.needs)) {
@@ -37,31 +36,31 @@ describe("SimulationController + AgentEngine", () => {
     expect(controller.world.time.getTotalMinutes()).toBeGreaterThan(0);
   });
 
-  it("persists agents to the database and reloads them", () => {
+  it("persists agents to the database and reloads them", async () => {
     const file = ":memory:";
     const db = openDatabase({ file });
     const controller = new SimulationController(db);
-    for (let i = 0; i < 10; i++) controller.tick();
+    await runTicks(controller, 10);
     controller.persist();
 
     const countRow = db.prepare("SELECT COUNT(*) as c FROM agents").get() as { c: number };
     expect(countRow.c).toBe(5);
   });
 
-  it("records a decision log entry after enough ticks", () => {
+  it("records a decision log entry after enough ticks", async () => {
     const db = openDatabase({ file: ":memory:" });
     const controller = new SimulationController(db);
     controller.setSpeed(120);
-    for (let i = 0; i < 50; i++) controller.tick();
+    await runTicks(controller, 50);
     const row = db.prepare("SELECT COUNT(*) as c FROM decisions_log").get() as { c: number };
     expect(row.c).toBeGreaterThan(0);
   });
 
-  it("agents actually meet and form at least one relationship over many simulated days", () => {
+  it("agents actually meet and form at least one relationship over many simulated days", async () => {
     const db = openDatabase({ file: ":memory:" });
     const controller = new SimulationController(db);
     controller.setSpeed(120);
-    for (let i = 0; i < 800; i++) controller.tick();
+    await runTicks(controller, 800);
 
     const relCount = (db.prepare("SELECT COUNT(*) as c FROM relationships").get() as { c: number }).c;
     expect(relCount).toBeGreaterThan(0);

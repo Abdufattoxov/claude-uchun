@@ -18,6 +18,8 @@ export const ACTIVITY = {
   shopping: "xarid qilmoqda",
   wandering: "shahar bo'ylab sayr qilmoqda",
   talkingWithSomeone: "kimdir bilan suhbatlashmoqda",
+  /** Deliberating over what to do next -- no need effects apply while in this state. */
+  thinking: "o'ylanib turibdi",
 } as const;
 
 export function talkingWithLabel(name: string): string {

@@ -152,7 +152,7 @@ async function refreshInspector(): Promise<void> {
     <h4>So'nggi xotiralar</h4>
     <ul>${detail.memories.shortTerm.slice(0, 6).map((m) => `<li>${m.description}</li>`).join("") || '<li class="muted">Hozircha hech narsa yo\'q</li>'}</ul>
     <h4>So'nggi qarorlar</h4>
-    <ul>${detail.recentDecisions.slice(0, 5).map((d) => `<li>${actionTypeLabel(d.action)}: ${d.reason}</li>`).join("") || '<li class="muted">Hozircha yo\'q</li>'}</ul>
+    <ul>${detail.recentDecisions.slice(0, 5).map((d) => `<li>${d.source === "llm" ? "🧠" : "⚙️"} ${actionTypeLabel(d.action)}: ${d.reason}</li>`).join("") || '<li class="muted">Hozircha yo\'q</li>'}</ul>
   `;
 }
 
@@ -200,6 +200,8 @@ async function pollEvents(): Promise<void> {
       appendEventLog(`${p.speaker} dan ${p.listener} ga: "${p.line}"`);
     } else if (ev.kind === "admin_message" && p.kind === "reflection") {
       appendEventLog(`💭 ${p.agent}: "${p.line}"`);
+    } else if (ev.kind === "admin_message" && p.kind === "thought") {
+      appendEventLog(`🧠 ${p.agent}: "${p.line}"`);
     } else if (ev.kind === "weather_change") {
       appendEventLog(`Ob-havo ${weatherLabel(p.weather)} ga o'zgardi (${p.cause})`);
     } else if (ev.kind === "unknown_event") {

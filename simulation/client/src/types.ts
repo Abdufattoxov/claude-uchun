@@ -102,7 +102,7 @@ export interface AgentDetail {
   memories: { shortTerm: MemoryRecord[]; longTerm: MemoryRecord[] };
   relationships: RelationshipView[];
   transactions: Array<{ simMinute: number; kind: string; amount: number; reason: string }>;
-  recentDecisions: Array<{ simMinute: number; action: string; reason: string }>;
+  recentDecisions: Array<{ simMinute: number; action: string; reason: string; source: "llm" | "utility" }>;
 }
 
 export interface WorldEventView {
