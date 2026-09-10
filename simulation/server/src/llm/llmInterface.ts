@@ -74,16 +74,16 @@ export class FallbackProvider implements LLMProvider {
   async generate(req: LLMRequest): Promise<string> {
     const seed = hashString(req.systemPrompt + "|" + req.userPrompt);
     const templates = [
-      "nods and shares a brief thought about their day",
-      "smiles and asks a friendly question in return",
-      "mentions something small they noticed around town recently",
-      "seems a little distracted but keeps the conversation going",
-      "laughs and changes the subject to something lighter",
-      "shrugs, saying it's probably nothing to worry about",
-      "frowns, wondering aloud if someone is playing a trick",
-      "grows quiet, clearly unsettled by it",
-      "gets excited, guessing it might be something wonderful",
-      "changes the subject quickly, not wanting to dwell on it",
+      "bosh irg'ab, kunining bir lahzasi haqida gapirib beradi",
+      "jilmayib, javobida do'stona savol beradi",
+      "yaqinda shaharda ko'rgan kichik bir narsa haqida gapiradi",
+      "biroz xayolga tolgan, lekin suhbatni davom ettiradi",
+      "kulib, mavzuni yengilroq narsaga o'zgartiradi",
+      "yelka qisib, bu haqida tashvishlanishga arzimasligini aytadi",
+      "qoshini chimirib, kimdir hazillashayotgan bo'lishi mumkinligini o'ylaydi",
+      "jim bo'lib qoladi, buning ta'sirida biroz xavotirlanganga o'xshaydi",
+      "hayajonlanib, bu ajoyib narsa bo'lishi mumkinligini taxmin qiladi",
+      "mavzuni tezda o'zgartiradi, bu haqida o'ylashni istamaydi",
     ];
     return templates[seed % templates.length];
   }

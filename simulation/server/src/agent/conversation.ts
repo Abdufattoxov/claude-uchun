@@ -23,7 +23,7 @@ function personaPrompt(agent: Agent, memories: MemoryRecord[], relationship?: Re
     `Current mood: ${agent.emotion.label}.`,
     relLine,
     `Recent things on their mind:\n${memoryLines}`,
-    `Speak briefly and naturally in first person, as this person would, in 1-2 short sentences. Do not narrate actions, just what they say.`,
+    `Speak briefly and naturally in first person, as this person would, in 1-2 short sentences. Do not narrate actions, just what they say. Respond only in the Uzbek language (o'zbek tilida), using the Latin alphabet.`,
   ].join("\n");
 }
 
@@ -52,7 +52,7 @@ export async function generateConversationLine(
   const system = personaPrompt(speaker, memories, relationship);
   const user = `You just ran into ${listener.name} at ${topicHint}. Say something to them.`;
   const { text, provider } = await llm.generate({ systemPrompt: system, userPrompt: user, maxTokens: 60 });
-  return { line: text || `${speaker.name} exchanges a friendly greeting.`, provider };
+  return { line: text || `${speaker.name} do'stona salomlashadi.`, provider };
 }
 
 export async function interpretUnknownEvent(
@@ -63,5 +63,5 @@ export async function interpretUnknownEvent(
   const system = personaPrompt(agent, memories);
   const user = `Something strange just happened: ${eventDescription}. In one or two sentences, react to it and say what you think it might mean, based only on what you already believe. It's fine to be uncertain or wrong.`;
   const { text, provider } = await llm.generate({ systemPrompt: system, userPrompt: user, maxTokens: 80, temperature: 0.9 });
-  return { line: text || `${agent.name} stares upward, unsure what to make of it.`, provider };
+  return { line: text || `${agent.name} tepaga tikilib, buni qanday tushunishni bilmay qoladi.`, provider };
 }

@@ -78,7 +78,7 @@ app.post("/api/admin/weather", (req, res) => {
   const weather = req.body?.weather as Weather;
   const valid: Weather[] = ["clear", "cloudy", "rain", "storm"];
   if (!valid.includes(weather)) return res.status(400).json({ error: `weather must be one of ${valid.join(", ")}` });
-  const event = controller.world.setWeather(weather, "admin override");
+  const event = controller.world.setWeather(weather, "administrator tomonidan o'zgartirildi");
   res.json(event);
 });
 

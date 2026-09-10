@@ -64,7 +64,7 @@ export class WorldEngine {
     const options = WEATHER_TRANSITIONS[this.weather];
     const next = options[Math.floor(Math.random() * options.length)];
     if (next !== this.weather) {
-      this.setWeather(next, "natural drift");
+      this.setWeather(next, "tabiiy o'zgarish");
     }
   }
 

@@ -1,6 +1,7 @@
 import { TownScene } from "./scene";
 import { connectWebSocket, fetchAgentDetail, fetchEvents, fetchWorld, injectEvent, setPaused, setSpeed, setWeather } from "./api";
 import type { AgentPublicState, StateMessage } from "./types";
+import { actionTypeLabel, goalKindLabel, needLabel, occupationLabel, relationshipStateLabel, weatherLabel } from "./i18n";
 
 const canvas = document.getElementById("scene") as HTMLCanvasElement;
 const labelLayer = document.createElement("div");
@@ -46,12 +47,12 @@ async function bootstrap() {
 }
 
 function onState(msg: StateMessage): void {
-  clockEl.textContent = `Day ${msg.time.day}, ${pad(msg.time.hour)}:${pad(msg.time.minute)}`;
-  weatherLabelEl.textContent = msg.weather;
+  clockEl.textContent = `${msg.time.day}-kun, ${pad(msg.time.hour)}:${pad(msg.time.minute)}`;
+  weatherLabelEl.textContent = weatherLabel(msg.weather);
   scene.applyTime(msg.time);
   scene.applyWeather(msg.weather);
   paused = msg.paused;
-  pauseBtn.textContent = paused ? "Resume" : "Pause";
+  pauseBtn.textContent = paused ? "Davom etish" : "Pauza";
   if (!dropdownsSynced) {
     weatherSelect.value = msg.weather;
     const closestSpeed = Array.from(speedSelect.options).reduce((best, opt) =>
@@ -99,8 +100,8 @@ function renderAgentList(agents: AgentPublicState[]): void {
   }
 }
 
-function needBar(label: string, value: number): string {
-  return `<div class="need-bar-row"><span class="label">${label}</span><div class="need-bar"><i style="width:${value}%"></i></div></div>`;
+function needBar(key: string, value: number): string {
+  return `<div class="need-bar-row"><span class="label">${needLabel(key)}</span><div class="need-bar"><i style="width:${value}%"></i></div></div>`;
 }
 
 function selectAgent(id: string): void {
@@ -115,20 +116,20 @@ async function refreshInspector(): Promise<void> {
   const a = detail.agent;
   inspectorContentEl.innerHTML = `
     <h2>${a.name}</h2>
-    <div class="muted">${a.age} yrs &middot; ${a.occupation ?? "unemployed"} &middot; $${a.money.toFixed(2)}</div>
+    <div class="muted">${a.age} yosh &middot; ${occupationLabel(a.occupation)} &middot; $${a.money.toFixed(2)}</div>
     <div class="muted">${a.currentActivity}</div>
-    <h4>Needs</h4>
+    <h4>Ehtiyojlar</h4>
     ${Object.entries(a.needs).map(([k, v]) => needBar(k, v as number)).join("")}
-    <h4>Emotion</h4>
-    <div class="muted">${a.emotion.label} (valence ${a.emotion.valence.toFixed(2)})</div>
-    <h4>Goals</h4>
-    <ul>${a.goals.map((g) => `<li>${g.description} <span class="pill">${g.kind}</span></li>`).join("")}</ul>
-    <h4>Relationships</h4>
-    <ul>${detail.relationships.length ? detail.relationships.map((r) => `<li>${r.otherName}: ${r.state.replace("_", " ")} (${r.affinity.toFixed(0)})</li>`).join("") : '<li class="muted">No relationships yet</li>'}</ul>
-    <h4>Recent memories</h4>
-    <ul>${detail.memories.shortTerm.slice(0, 6).map((m) => `<li>${m.description}</li>`).join("") || '<li class="muted">Nothing yet</li>'}</ul>
-    <h4>Recent decisions</h4>
-    <ul>${detail.recentDecisions.slice(0, 5).map((d) => `<li>${d.action}: ${d.reason}</li>`).join("") || '<li class="muted">None yet</li>'}</ul>
+    <h4>Kayfiyat</h4>
+    <div class="muted">${a.emotion.label} (valentlik ${a.emotion.valence.toFixed(2)})</div>
+    <h4>Maqsadlar</h4>
+    <ul>${a.goals.map((g) => `<li>${g.description} <span class="pill">${goalKindLabel(g.kind)}</span></li>`).join("")}</ul>
+    <h4>Munosabatlar</h4>
+    <ul>${detail.relationships.length ? detail.relationships.map((r) => `<li>${r.otherName}: ${relationshipStateLabel(r.state)} (${r.affinity.toFixed(0)})</li>`).join("") : '<li class="muted">Hozircha munosabatlar yo\'q</li>'}</ul>
+    <h4>So'nggi xotiralar</h4>
+    <ul>${detail.memories.shortTerm.slice(0, 6).map((m) => `<li>${m.description}</li>`).join("") || '<li class="muted">Hozircha hech narsa yo\'q</li>'}</ul>
+    <h4>So'nggi qarorlar</h4>
+    <ul>${detail.recentDecisions.slice(0, 5).map((d) => `<li>${actionTypeLabel(d.action)}: ${d.reason}</li>`).join("") || '<li class="muted">Hozircha yo\'q</li>'}</ul>
   `;
 }
 
@@ -153,7 +154,7 @@ eventSubmitBtn.addEventListener("click", async () => {
   const text = eventTextEl.value.trim();
   if (!text) return;
   eventSubmitBtn.disabled = true;
-  eventSubmitBtn.textContent = "Injecting...";
+  eventSubmitBtn.textContent = "Yuborilmoqda...";
   try {
     const result = await injectEvent(text);
     for (const r of result.reactions) {
@@ -162,7 +163,7 @@ eventSubmitBtn.addEventListener("click", async () => {
     eventTextEl.value = "";
   } finally {
     eventSubmitBtn.disabled = false;
-    eventSubmitBtn.textContent = "Inject";
+    eventSubmitBtn.textContent = "Yuborish";
   }
 });
 
@@ -172,11 +173,11 @@ async function pollEvents(): Promise<void> {
     if (ev.simMinute <= lastEventPoll) continue;
     if (ev.kind === "admin_message" && (ev.payload as any).kind === "dialogue") {
       const p = ev.payload as any;
-      appendEventLog(`${p.speaker} to ${p.listener}: "${p.line}"`);
+      appendEventLog(`${p.speaker} dan ${p.listener} ga: "${p.line}"`);
     } else if (ev.kind === "weather_change") {
-      appendEventLog(`Weather shifted to ${(ev.payload as any).weather} (${(ev.payload as any).cause})`);
+      appendEventLog(`Ob-havo ${weatherLabel((ev.payload as any).weather)} ga o'zgardi (${(ev.payload as any).cause})`);
     } else if (ev.kind === "unknown_event") {
-      appendEventLog(`Unknown event: ${(ev.payload as any).description}`);
+      appendEventLog(`Noma'lum hodisa: ${(ev.payload as any).description}`);
     }
   }
   if (events.length) lastEventPoll = Math.max(...events.map((e) => e.simMinute));

@@ -9,6 +9,8 @@ import { MemoryStore } from "../memory/memoryStore.js";
 import { RelationshipStore } from "../relationship/relationshipStore.js";
 import { EconomyStore, wageFor } from "../economy/economyStore.js";
 import { generateConversationLine, interpretUnknownEvent } from "./conversation.js";
+import { ACTIVITY, isTalkingActivity, talkingWithLabel, walkingToLabel } from "./activityLabels.js";
+import { NEED_LABEL_UZ, occupationLabel } from "./labels.js";
 import { randomUUID } from "node:crypto";
 
 const MOVE_SPEED_PER_TICK = 3.2; // world units; decoupled from sim-time multiplier
@@ -200,23 +202,23 @@ export class AgentEngine {
     const action = decideNextAction({ agent, time: this.world.time.snapshot(), nearbyAgentIds });
 
     // Settle wages if finishing a work shift (fixed 4h shifts, see decisionSystem).
-    if (agent.currentActivity === "working" && agent.occupation) {
+    if (agent.currentActivity === ACTIVITY.working && agent.occupation) {
       const pay = Math.round(wageFor(agent.occupation) * 4 * 100) / 100;
       agent.money += pay;
-      this.economy.record(agent.id, "income", pay, `wages as ${agent.occupation}`, now);
+      this.economy.record(agent.id, "income", pay, `${occupationLabel(agent.occupation)} sifatida ish haqi`, now);
     }
     if (action.type === "eat" && action.locationId === "cafe") {
       const cost = 6;
       if (agent.money >= cost) {
         agent.money -= cost;
-        this.economy.record(agent.id, "expense", cost, "lunch at the cafe", now);
+        this.economy.record(agent.id, "expense", cost, "kafeda tushlik", now);
       }
     }
     if (action.type === "shop") {
       const cost = 8;
       if (agent.money >= cost) {
         agent.money -= cost;
-        this.economy.record(agent.id, "expense", cost, "shopping at the general store", now);
+        this.economy.record(agent.id, "expense", cost, "do'konda xarid", now);
       }
     }
 
@@ -229,7 +231,7 @@ export class AgentEngine {
       this.onArrive(agent);
     } else if (loc) {
       agent.targetPosition = { x: loc.x, z: loc.z };
-      agent.currentActivity = `walking to ${loc.name}`;
+      agent.currentActivity = walkingToLabel(loc.name);
       agent.activityEndsAtMin = undefined;
     }
 
@@ -265,19 +267,19 @@ export class AgentEngine {
     runtimeInit.talkingWith = targetId;
     runtimeTarget.talkingWith = initiator.id;
     target.targetPosition = undefined; // stop wherever they are to chat
-    initiator.currentActivity = `talking with ${target.name}`;
-    target.currentActivity = `talking with ${initiator.name}`;
+    initiator.currentActivity = talkingWithLabel(target.name);
+    target.currentActivity = talkingWithLabel(initiator.name);
     initiator.activityEndsAtMin = now + 20;
     target.activityEndsAtMin = now + 20;
 
     const relationship = this.relationships.adjustAffinity(initiator.id, target.id, 4, now);
-    const loc = findLocation(initiator.currentLocationId ?? "square")?.name ?? "the street";
+    const loc = findLocation(initiator.currentLocationId ?? "square")?.name ?? "ko'chada";
 
     this.memories.add({
       agentId: initiator.id,
       simMinute: now,
       kind: "conversation",
-      description: `Ran into ${target.name} at ${loc} and talked for a bit.`,
+      description: `${loc}da ${target.name} bilan uchrashib, birozdan gaplashdi.`,
       participants: [target.id],
       locationId: initiator.currentLocationId,
       importance: 0.35,
@@ -286,7 +288,7 @@ export class AgentEngine {
       agentId: target.id,
       simMinute: now,
       kind: "conversation",
-      description: `Ran into ${initiator.name} at ${loc} and talked for a bit.`,
+      description: `${loc}da ${initiator.name} bilan uchrashib, birozdan gaplashdi.`,
       participants: [initiator.id],
       locationId: target.currentLocationId,
       importance: 0.35,
@@ -340,7 +342,7 @@ export class AgentEngine {
         agentId: agent.id,
         simMinute: now,
         kind: "event",
-        description: `Witnessed something strange: ${description}. Reaction: ${line}`,
+        description: `G'alati bir narsani ko'rdi: ${description}. Munosabati: ${line}`,
         participants: [],
         locationId: agent.currentLocationId,
         importance: 0.8,
@@ -361,24 +363,24 @@ function distance(a: { x: number; z: number }, b: { x: number; z: number }): num
 
 function activityEffectKey(agent: Agent): string {
   const activity = agent.currentActivity;
-  if (activity === "eating") return "eat";
-  if (activity === "sleeping") return "sleep";
-  if (activity === "relaxing") return "relax_fun";
-  if (activity === "freshening up") return "relax_hygiene";
-  if (activity.startsWith("talking with")) return "socialize";
-  if (activity === "working") return "work";
-  if (activity === "shopping") return "shop";
+  if (activity === ACTIVITY.eating) return "eat";
+  if (activity === ACTIVITY.sleeping) return "sleep";
+  if (activity === ACTIVITY.relaxingFun) return "relax_fun";
+  if (activity === ACTIVITY.freshening) return "relax_hygiene";
+  if (isTalkingActivity(activity)) return "socialize";
+  if (activity === ACTIVITY.working) return "work";
+  if (activity === ACTIVITY.shopping) return "shop";
   return "";
 }
 
 function describeReason(agent: Agent, action: AgentAction): string {
   const needs = agent.needs;
   const lowest = (Object.entries(needs) as Array<[keyof Needs, number]>).sort((a, b) => a[1] - b[1])[0];
-  return `${action.activityLabel} (lowest need: ${lowest[0]} at ${Math.round(lowest[1])})`;
+  return `${action.activityLabel} (eng past ehtiyoj: ${NEED_LABEL_UZ[lowest[0]]} — ${Math.round(lowest[1])})`;
 }
 
 function labelFor(valence: number, arousal: number): string {
-  if (valence > 0.4) return arousal > 0.5 ? "excited" : "content";
-  if (valence < -0.4) return arousal > 0.5 ? "anxious" : "weary";
-  return "neutral";
+  if (valence > 0.4) return arousal > 0.5 ? "hayajonlangan" : "mamnun";
+  if (valence < -0.4) return arousal > 0.5 ? "xavotirli" : "charchagan";
+  return "beparvo";
 }

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="uz">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Civilization</title>
+    <title>AI Shaharchasi</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -12,12 +12,12 @@
 
       <div id="topbar">
         <div class="topbar-group">
-          <span id="clock">Day 1, 08:00</span>
-          <span id="weather-label">clear</span>
+          <span id="clock">1-kun, 08:00</span>
+          <span id="weather-label">ochiq</span>
         </div>
         <div class="topbar-group">
-          <button id="pause-btn">Pause</button>
-          <label>Speed
+          <button id="pause-btn">Pauza</button>
+          <label>Tezlik
             <select id="speed-select">
               <option value="10">10x</option>
               <option value="30">30x</option>
@@ -26,12 +26,12 @@
               <option value="600">600x</option>
             </select>
           </label>
-          <label>Weather
+          <label>Ob-havo
             <select id="weather-select">
-              <option value="clear">Clear</option>
-              <option value="cloudy">Cloudy</option>
-              <option value="rain">Rain</option>
-              <option value="storm">Storm</option>
+              <option value="clear">Ochiq</option>
+              <option value="cloudy">Bulutli</option>
+              <option value="rain">Yomg'irli</option>
+              <option value="storm">Bo'ronli</option>
             </select>
           </label>
         </div>
@@ -43,10 +43,10 @@
       </div>
 
       <div id="admin-panel">
-        <h3>Admin: Inject Event</h3>
-        <p class="hint">Appears as an unexplained phenomenon. Agents interpret it themselves &mdash; they are never told what it "really" is.</p>
-        <textarea id="event-text" rows="2" placeholder="e.g. A glowing symbol appears in the night sky and slowly fades"></textarea>
-        <button id="event-submit">Inject</button>
+        <h3>Administrator: Hodisa yuborish</h3>
+        <p class="hint">Bu tushuntirib bo'lmaydigan hodisa sifatida namoyon bo'ladi. Aholi uni o'zicha izohlaydi &mdash; ularga bu "aslida nima ekani" hech qachon aytilmaydi.</p>
+        <textarea id="event-text" rows="2" placeholder="masalan: Tungi osmonda porlab turgan belgi paydo bo'lib, asta-sekin so'nadi"></textarea>
+        <button id="event-submit">Yuborish</button>
         <div id="event-log"></div>
       </div>
 

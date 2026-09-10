@@ -1,5 +1,6 @@
 import type { Agent, Needs, WorldLocation, WorldTime } from "../types.js";
 import { LOCATIONS, findLocation } from "../world/locations.js";
+import { ACTIVITY } from "../agent/activityLabels.js";
 
 export type ActionType =
   | "go_to"
@@ -54,19 +55,19 @@ export function decideNextAction(ctx: DecisionContext): AgentAction {
 
   // 1. Needs-driven candidates.
   candidates.push({
-    action: mkAction("eat", pickFoodLocation(agent), "eating"),
+    action: mkAction("eat", pickFoodLocation(agent), ACTIVITY.eating),
     score: needScore(agent.needs.hunger) * NEED_DECAY_WEIGHT.hunger,
   });
   candidates.push({
-    action: mkAction("sleep", agent.homeId, "sleeping", 6 * 60),
+    action: mkAction("sleep", agent.homeId, ACTIVITY.sleeping, 6 * 60),
     score: needScore(agent.needs.energy) * NEED_DECAY_WEIGHT.energy * (time.isDaytime ? 0.4 : 1.1),
   });
   candidates.push({
-    action: mkAction("relax", "park", "relaxing"),
+    action: mkAction("relax", "park", ACTIVITY.relaxingFun),
     score: needScore(agent.needs.fun) * NEED_DECAY_WEIGHT.fun * (0.6 + agent.personality.openness * 0.4),
   });
   candidates.push({
-    action: mkAction("relax", agent.homeId, "freshening up", 30),
+    action: mkAction("relax", agent.homeId, ACTIVITY.freshening, 30),
     score: needScore(agent.needs.hygiene) * NEED_DECAY_WEIGHT.hygiene,
   });
 
@@ -75,7 +76,7 @@ export function decideNextAction(ctx: DecisionContext): AgentAction {
     const socialDrive =
       needScore(agent.needs.social) * NEED_DECAY_WEIGHT.social * (0.5 + agent.personality.extraversion * 0.5);
     candidates.push({
-      action: mkAction("socialize", agent.currentLocationId ?? "square", "talking with someone nearby", 20, ctx.nearbyAgentIds[0]),
+      action: mkAction("socialize", agent.currentLocationId ?? "square", ACTIVITY.talkingWithSomeone, 20, ctx.nearbyAgentIds[0]),
       score: socialDrive,
     });
   }
@@ -84,11 +85,11 @@ export function decideNextAction(ctx: DecisionContext): AgentAction {
   if (agent.workId && scheduled?.locationId === agent.workId) {
     const careerGoal = agent.goals.find((g) => g.kind === "career");
     const drive = 0.55 + (careerGoal?.priority ?? 0) * 0.3 + agent.personality.conscientiousness * 0.2;
-    candidates.push({ action: mkAction("work", agent.workId, "working", 4 * 60), score: drive });
+    candidates.push({ action: mkAction("work", agent.workId, ACTIVITY.working, 4 * 60), score: drive });
   }
 
   // 4. Shopping: mild, occasional pull, mostly need-independent.
-  candidates.push({ action: mkAction("shop", "general_store", "shopping", 30), score: 0.2 });
+  candidates.push({ action: mkAction("shop", "general_store", ACTIVITY.shopping, 30), score: 0.2 });
 
   // 5. Default: follow the routine schedule if nothing urgent wins.
   if (scheduled) {
@@ -98,7 +99,7 @@ export function decideNextAction(ctx: DecisionContext): AgentAction {
     });
   }
 
-  candidates.push({ action: mkAction("wander", "square", "wandering around town"), score: 0.15 });
+  candidates.push({ action: mkAction("wander", "square", ACTIVITY.wandering), score: 0.15 });
 
   candidates.sort((a, b) => b.score - a.score);
   return candidates[0].action;

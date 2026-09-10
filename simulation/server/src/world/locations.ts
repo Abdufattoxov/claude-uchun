@@ -6,20 +6,20 @@ import type { WorldLocation } from "../types.js";
  * keeps phase 1-6 simple and testable.
  */
 export const LOCATIONS: WorldLocation[] = [
-  { id: "house_1", name: "Maple House", type: "house", x: -18, z: -10, radius: 3 },
-  { id: "house_2", name: "Birch House", type: "house", x: -18, z: 0, radius: 3 },
-  { id: "house_3", name: "Cedar House", type: "house", x: -18, z: 10, radius: 3 },
-  { id: "house_4", name: "Willow House", type: "house", x: 18, z: -10, radius: 3 },
-  { id: "house_5", name: "Aspen House", type: "house", x: 18, z: 10, radius: 3 },
+  { id: "house_1", name: "Zarang uyi", type: "house", x: -18, z: -10, radius: 3 },
+  { id: "house_2", name: "Qayin uyi", type: "house", x: -18, z: 0, radius: 3 },
+  { id: "house_3", name: "Sadr uyi", type: "house", x: -18, z: 10, radius: 3 },
+  { id: "house_4", name: "Tol uyi", type: "house", x: 18, z: -10, radius: 3 },
+  { id: "house_5", name: "Terak uyi", type: "house", x: 18, z: 10, radius: 3 },
 
-  { id: "bakery", name: "Riverside Bakery", type: "workplace", x: 0, z: -18, radius: 4 },
-  { id: "farm", name: "Green Valley Farm", type: "workplace", x: 12, z: -18, radius: 5 },
-  { id: "workshop", name: "Old Mill Workshop", type: "workplace", x: -12, z: -18, radius: 4 },
+  { id: "bakery", name: "Daryo bo'yi novvoyxonasi", type: "workplace", x: 0, z: -18, radius: 4 },
+  { id: "farm", name: "Yashil Vodiy fermasi", type: "workplace", x: 12, z: -18, radius: 5 },
+  { id: "workshop", name: "Eski Tegirmon ustaxonasi", type: "workplace", x: -12, z: -18, radius: 4 },
 
-  { id: "general_store", name: "General Store", type: "shop", x: 6, z: 0, radius: 3 },
-  { id: "cafe", name: "Sunny Cafe", type: "cafe", x: -6, z: 0, radius: 3 },
-  { id: "park", name: "Town Park", type: "park", x: 0, z: 12, radius: 6 },
-  { id: "square", name: "Town Square", type: "public", x: 0, z: 0, radius: 5 },
+  { id: "general_store", name: "Bozor do'koni", type: "shop", x: 6, z: 0, radius: 3 },
+  { id: "cafe", name: "Quyoshli kafe", type: "cafe", x: -6, z: 0, radius: 3 },
+  { id: "park", name: "Shahar bog'i", type: "park", x: 0, z: 12, radius: 6 },
+  { id: "square", name: "Shahar maydoni", type: "public", x: 0, z: 0, radius: 5 },
 ];
 
 export function findLocation(id: string): WorldLocation | undefined {
