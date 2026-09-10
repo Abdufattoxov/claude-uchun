@@ -196,9 +196,14 @@ button:hover {
   display: flex;
   flex-direction: column;
 }
-#admin-panel h3 {
+#admin-panel summary {
   margin: 0 0 6px;
   font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+#admin-panel summary::-webkit-details-marker {
+  display: none;
 }
 #admin-panel .hint {
   font-size: 11px;
@@ -225,4 +230,89 @@ button:hover {
   opacity: 0.85;
   border-left: 2px solid #4a6ee0;
   padding-left: 6px;
+}
+
+/* ---- Mobil ekranlar uchun (telefon kengligi) ---- */
+@media (max-width: 760px) {
+  #topbar {
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .topbar-group {
+    gap: 8px;
+  }
+  .topbar-group label {
+    display: flex;
+    flex-direction: column;
+    font-size: 9px;
+    opacity: 0.7;
+    gap: 2px;
+  }
+  #topbar button, #topbar select {
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+
+  /* Agentlar ro'yxati: chapdagi ustundan pastdagi gorizontal skrollga aylanadi */
+  #agent-list {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: auto;
+    height: 96px;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 6px 8px;
+    background: linear-gradient(to top, rgba(6, 9, 16, 0.92), rgba(6, 9, 16, 0.55));
+  }
+  .agent-card {
+    flex: 0 0 auto;
+    width: 148px;
+  }
+
+  /* Admin panelni yig'iladigan (collapsible) qilib, ekranning katta qismini bosmasin */
+  #admin-panel {
+    top: 50px;
+    left: 8px;
+    right: 8px;
+    bottom: auto;
+    width: auto;
+    height: auto;
+    padding: 8px 10px;
+  }
+  #admin-panel #event-log {
+    max-height: 18vh;
+  }
+  #admin-panel:not([open]) {
+    padding-bottom: 8px;
+  }
+  #admin-panel .hint {
+    display: none;
+  }
+  #admin-panel summary::after {
+    content: " \25BE";
+    opacity: 0.6;
+  }
+  #admin-panel:not([open]) summary::after {
+    content: " \25B8";
+  }
+  #admin-panel textarea,
+  #admin-panel #event-submit,
+  #admin-panel #event-log {
+    margin-top: 6px;
+  }
+
+  /* Inspektor: ekranning pastki yarmidan chiquvchi to'liq kenglikdagi panel */
+  #inspector {
+    top: auto;
+    bottom: 100px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: 50vh;
+  }
 }
