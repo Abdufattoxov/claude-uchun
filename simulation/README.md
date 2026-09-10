@@ -230,12 +230,29 @@ module needs to change.
 ## Changing simulation speed
 
 - At runtime: the "Speed" dropdown in the dashboard, or
-  `POST /api/admin/speed { "multiplier": 60 }` (1 real minute = 60 sim
-  minutes at the default).
+  `POST /api/admin/speed { "multiplier": 60 }`.
+- The dropdown's first option, **"Normal (haqiqiy vaqt)"**, runs the
+  clock at genuine real-time pace (1 sim-second per real second) so you
+  can watch agents live without the day/night cycle or their schedules
+  racing past — useful right after opening the dashboard, before
+  switching to a faster option to fast-forward through quiet stretches.
+  The other presets (10x-600x) are unchanged accelerations for that.
 - At startup: `TimeSystem`'s `multiplier` option in
   `server/src/controller/simulationController.ts` / `WorldEngine`.
 - Pause/resume: the "Pause" button, or `POST /api/admin/pause` /
   `POST /api/admin/resume`.
+
+## Camera controls
+
+The 3D view supports a free camera, not just a fixed angle:
+
+- **Drag** (mouse or one finger) to orbit around the current look-at
+  point.
+- **Scroll wheel / pinch** (two fingers) to zoom in and out.
+- **On-screen D-pad** (bottom-right) or **WASD / arrow keys** to pan
+  across the whole map, relative to which way you're currently facing.
+- The **⌂** button in the middle of the D-pad recenters the camera on
+  the town.
 
 ## Adding agents
 

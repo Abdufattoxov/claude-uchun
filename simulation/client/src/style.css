@@ -82,6 +82,51 @@ button:hover {
   z-index: 10;
 }
 
+#camera-controls {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 10;
+  user-select: none;
+  touch-action: none;
+}
+
+.cam-dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 34px);
+  grid-template-rows: repeat(3, 34px);
+  gap: 2px;
+}
+.cam-up { grid-column: 2; grid-row: 1; }
+.cam-left { grid-column: 1; grid-row: 2; }
+.cam-center { grid-column: 2; grid-row: 2; }
+.cam-right { grid-column: 3; grid-row: 2; }
+.cam-down { grid-column: 2; grid-row: 3; }
+
+.cam-zoom {
+  display: flex;
+  gap: 4px;
+}
+
+.cam-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  background: rgba(15, 20, 32, 0.8);
+  border-radius: 8px;
+}
+.cam-btn:active {
+  background: #2c3a52;
+}
+
 .agent-card {
   background: rgba(15, 20, 32, 0.82);
   border: 1px solid #26324a;
@@ -258,6 +303,13 @@ button:hover {
 
 /* ---- Mobil ekranlar uchun (telefon kengligi) ---- */
 @media (max-width: 760px) {
+  #camera-controls {
+    bottom: 104px;
+    right: 8px;
+    transform: scale(0.9);
+    transform-origin: bottom right;
+  }
+
   #topbar {
     flex-wrap: wrap;
     gap: 6px 10px;

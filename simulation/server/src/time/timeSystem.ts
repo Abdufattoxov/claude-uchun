@@ -49,10 +49,15 @@ export class TimeSystem {
     return this.paused;
   }
 
-  /** Advance the clock by one tick. Returns minutes actually advanced. */
+  /**
+   * Advance the clock by one tick. Returns minutes actually advanced.
+   * Kept fractional (no integer floor) so a "Normal" real-time-ish
+   * speed can advance by a fraction of a minute per tick instead of
+   * being forced up to a minimum of 1 whole minute.
+   */
   tick(): number {
     if (this.paused) return 0;
-    const delta = Math.max(1, Math.round(this.baseMinutesPerTick * this.multiplier));
+    const delta = this.baseMinutesPerTick * this.multiplier;
     this.totalMinutes += delta;
     return delta;
   }
@@ -69,7 +74,7 @@ export class TimeSystem {
     const day = Math.floor(this.totalMinutes / MINUTES_PER_DAY) + 1;
     const minuteOfDay = this.totalMinutes % MINUTES_PER_DAY;
     const hour = Math.floor(minuteOfDay / 60);
-    const minute = minuteOfDay % 60;
+    const minute = Math.floor(minuteOfDay % 60);
     return {
       totalMinutes: this.totalMinutes,
       day,

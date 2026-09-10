@@ -161,6 +161,29 @@ inspectorCloseBtn.addEventListener("click", () => {
   inspectorEl.classList.add("hidden");
 });
 
+// Camera D-pad: press-and-hold to pan (mouse or touch, via pointer events),
+// so the viewer can freely move around the map, not just orbit in place.
+function bindPanButton(id: string, direction: "up" | "down" | "left" | "right"): void {
+  const btn = document.getElementById(id) as HTMLButtonElement;
+  const start = (e: Event) => {
+    e.preventDefault();
+    scene.setPanFlag(direction, true);
+  };
+  const stop = () => scene.setPanFlag(direction, false);
+  btn.addEventListener("pointerdown", start);
+  btn.addEventListener("pointerup", stop);
+  btn.addEventListener("pointerleave", stop);
+  btn.addEventListener("pointercancel", stop);
+}
+bindPanButton("cam-up", "up");
+bindPanButton("cam-down", "down");
+bindPanButton("cam-left", "left");
+bindPanButton("cam-right", "right");
+
+document.getElementById("cam-zoom-in")!.addEventListener("click", () => scene.zoomBy(-8));
+document.getElementById("cam-zoom-out")!.addEventListener("click", () => scene.zoomBy(8));
+document.getElementById("cam-reset")!.addEventListener("click", () => scene.resetCamera());
+
 pauseBtn.addEventListener("click", async () => {
   await setPaused(!paused);
 });

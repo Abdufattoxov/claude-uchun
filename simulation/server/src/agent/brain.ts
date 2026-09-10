@@ -116,6 +116,7 @@ function personaSystemPrompt(agent: Agent, memories: MemoryRecord[], time: World
   const memLine = memories.length ? memories.map((m) => `- ${m.description}`).join("\n") : "- Hech narsa esda yo'q.";
 
   return [
+    `MUHIM: Javobingizni faqat va faqat o'zbek tilida, lotin yozuvida yozing. Ingliz yoki rus tilidan birorta ham so'z ishlatmang.`,
     `Siz ${agent.name}, ${agent.age} yoshli ${occupationTitle(agent.occupation, agent.skill)}, kichik shaharchada yashaysiz.`,
     `Xarakteringiz (0 dan 1 gacha): ochiqlik ${p.openness.toFixed(2)}, tartiblilik ${p.conscientiousness.toFixed(2)}, ekstrovertlik ${p.extraversion.toFixed(2)}, mehribonlik ${p.agreeableness.toFixed(2)}, xavotirlanish ${p.neuroticism.toFixed(2)}.`,
     `E'tiqodlaringiz: ${agent.beliefs.join("; ")}.`,
@@ -157,7 +158,7 @@ export async function decideViaBrain(
     "",
     "Javobingizni aynan shu formatda yozing, boshqa hech narsa qo'shmang:",
     "TANLOV: <raqam>",
-    "SABAB: <nega aynan shuni tanlaganingiz, 1 gap, birinchi shaxsda>",
+    "SABAB: <nega aynan shuni tanlaganingiz, 1 gap, birinchi shaxsda, o'zbek tilida>",
   ].join("\n");
 
   const { text, provider } = await llm.generate({ systemPrompt: system, userPrompt: user, maxTokens: 120, temperature: 0.85 });

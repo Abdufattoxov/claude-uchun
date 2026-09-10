@@ -19,6 +19,7 @@
           <button id="pause-btn">Pauza</button>
           <label>Tezlik
             <select id="speed-select">
+              <option value="0.033333">Normal (haqiqiy vaqt)</option>
               <option value="10">10x</option>
               <option value="30">30x</option>
               <option value="60" selected>60x</option>
@@ -57,6 +58,20 @@
       </details>
 
       <div id="agent-list"></div>
+
+      <div id="camera-controls" title="Kamerani boshqarish: sudrab aylantiring, g'ildirak bilan yaqinlashtiring, tugmalar bilan siljiting">
+        <div class="cam-dpad">
+          <button id="cam-up" class="cam-btn cam-up" aria-label="Oldinga">&#9650;</button>
+          <button id="cam-left" class="cam-btn cam-left" aria-label="Chapga">&#9664;</button>
+          <button id="cam-reset" class="cam-btn cam-center" aria-label="Kamerani asl holatga qaytarish">&#8962;</button>
+          <button id="cam-right" class="cam-btn cam-right" aria-label="O'ngga">&#9654;</button>
+          <button id="cam-down" class="cam-btn cam-down" aria-label="Orqaga">&#9660;</button>
+        </div>
+        <div class="cam-zoom">
+          <button id="cam-zoom-in" class="cam-btn" aria-label="Yaqinlashtirish">+</button>
+          <button id="cam-zoom-out" class="cam-btn" aria-label="Uzoqlashtirish">&minus;</button>
+        </div>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

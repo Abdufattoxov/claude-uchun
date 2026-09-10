@@ -17,13 +17,15 @@ function personaPrompt(agent: Agent, memories: MemoryRecord[], relationship?: Re
     : "They have never spoken before.";
 
   return [
+    `IMPORTANT: You must write your entire reply only in the Uzbek language (o'zbek tili), Latin script. Never use English or Russian, not even one word.`,
     `You are ${agent.name}, a ${agent.age}-year-old ${agent.occupation ?? "resident"} living in a small town.`,
     `Personality: ${traits}.`,
     `Beliefs: ${agent.beliefs.join("; ")}.`,
     `Current mood: ${agent.emotion.label}.`,
     relLine,
     `Recent things on their mind:\n${memoryLines}`,
-    `Speak briefly and naturally in first person, as this person would, in 1-2 short sentences. Do not narrate actions, just what they say. Respond only in the Uzbek language (o'zbek tilida), using the Latin alphabet.`,
+    `Speak briefly and naturally in first person, as this person would, in 1-2 short sentences. Do not narrate actions, just what they say.`,
+    `Reminder: reply only in Uzbek (o'zbek tilida). This is required, not optional.`,
   ].join("\n");
 }
 
@@ -50,7 +52,7 @@ export async function generateConversationLine(
   topicHint: string
 ): Promise<ConversationTurnResult> {
   const system = personaPrompt(speaker, memories, relationship);
-  const user = `You just ran into ${listener.name} at ${topicHint}. Say something to them.`;
+  const user = `You just ran into ${listener.name} at ${topicHint}. Say something to them. (Uzbek only.)`;
   const { text, provider } = await llm.generate({ systemPrompt: system, userPrompt: user, maxTokens: 60 });
   return { line: text || `${speaker.name} do'stona salomlashadi.`, provider };
 }
@@ -66,7 +68,7 @@ export async function generateReflection(
   memories: MemoryRecord[]
 ): Promise<ConversationTurnResult> {
   const system = personaPrompt(agent, memories);
-  const user = `Take a quiet moment to think back on your recent days. In 1-2 sentences, reflect on how you feel about your life right now, and anything you've noticed about yourself lately.`;
+  const user = `Take a quiet moment to think back on your recent days. In 1-2 sentences, reflect on how you feel about your life right now, and anything you've noticed about yourself lately. (Uzbek only.)`;
   const { text, provider } = await llm.generate({ systemPrompt: system, userPrompt: user, maxTokens: 80, temperature: 0.85 });
   return { line: text || `${agent.name} bugungi kunlarni xayolidan o'tkazadi.`, provider };
 }
@@ -77,7 +79,7 @@ export async function interpretUnknownEvent(
   eventDescription: string
 ): Promise<ConversationTurnResult> {
   const system = personaPrompt(agent, memories);
-  const user = `Something strange just happened: ${eventDescription}. In one or two sentences, react to it and say what you think it might mean, based only on what you already believe. It's fine to be uncertain or wrong.`;
+  const user = `Something strange just happened: ${eventDescription}. In one or two sentences, react to it and say what you think it might mean, based only on what you already believe. It's fine to be uncertain or wrong. (Uzbek only.)`;
   const { text, provider } = await llm.generate({ systemPrompt: system, userPrompt: user, maxTokens: 80, temperature: 0.9 });
   return { line: text || `${agent.name} tepaga tikilib, buni qanday tushunishni bilmay qoladi.`, provider };
 }

@@ -37,8 +37,16 @@ export class TownScene {
   private rain: THREE.Points | null = null;
   private onAgentClick?: (id: string) => void;
   private labelLayer: HTMLDivElement;
+
+  // Free camera: orbit (angle/pitch) + zoom (distance) around a look-at
+  // point (target) that the viewer can pan across the whole map.
   private camAngle = 0;
+  private camPitch = 0.7; // radians above the horizon
   private camDistance = 55;
+  private camTarget = { x: 0, z: 0 };
+  private readonly PAN_BOUND = 75;
+  private panFlags = { up: false, down: false, left: false, right: false };
+  private readonly PAN_SPEED = 0.9; // world units per animation frame
 
   constructor(canvas: HTMLCanvasElement, labelLayer: HTMLDivElement) {
     this.labelLayer = labelLayer;
@@ -63,7 +71,7 @@ export class TownScene {
     this.scene.add(this.sun);
 
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(200, 200),
+      new THREE.PlaneGeometry(400, 400),
       new THREE.MeshStandardMaterial({ color: 0x3a4a3a })
     );
     ground.rotation.x = -Math.PI / 2;
@@ -72,30 +80,157 @@ export class TownScene {
 
     window.addEventListener("resize", () => this.onResize());
     canvas.addEventListener("click", (e) => this.handleClick(e));
-    canvas.addEventListener("wheel", (e) => {
-      this.camDistance = THREE.MathUtils.clamp(this.camDistance + e.deltaY * 0.05, 20, 120);
-      this.updateCameraPosition();
-    });
+    this.setupPointerControls(canvas);
+    this.setupKeyboardControls();
+  }
+
+  /** Mouse drag (any pointer) orbits the view; wheel/pinch zooms. */
+  private setupPointerControls(canvas: HTMLCanvasElement): void {
+    canvas.addEventListener(
+      "wheel",
+      (e) => {
+        e.preventDefault();
+        this.zoomBy(e.deltaY * 0.05);
+      },
+      { passive: false }
+    );
+
     let dragging = false;
     let lastX = 0;
-    canvas.addEventListener("mousedown", (e) => {
+    let lastY = 0;
+
+    const startDrag = (x: number, y: number) => {
       dragging = true;
-      lastX = e.clientX;
-    });
-    window.addEventListener("mouseup", () => (dragging = false));
-    window.addEventListener("mousemove", (e) => {
+      lastX = x;
+      lastY = y;
+    };
+    const moveDrag = (x: number, y: number) => {
       if (!dragging) return;
-      this.camAngle += (e.clientX - lastX) * 0.005;
-      lastX = e.clientX;
+      this.camAngle += (x - lastX) * 0.006;
+      this.camPitch = THREE.MathUtils.clamp(this.camPitch + (y - lastY) * 0.005, 0.15, 1.4);
+      lastX = x;
+      lastY = y;
       this.updateCameraPosition();
+    };
+    const endDrag = () => (dragging = false);
+
+    canvas.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      startDrag(e.clientX, e.clientY);
+    });
+    window.addEventListener("mouseup", endDrag);
+    window.addEventListener("mousemove", (e) => moveDrag(e.clientX, e.clientY));
+
+    // Touch: one finger orbits, two fingers pinch-zoom.
+    let pinchStartDist = 0;
+    canvas.addEventListener(
+      "touchstart",
+      (e) => {
+        if (e.touches.length === 1) {
+          startDrag(e.touches[0].clientX, e.touches[0].clientY);
+        } else if (e.touches.length === 2) {
+          dragging = false;
+          pinchStartDist = touchDistance(e.touches);
+        }
+      },
+      { passive: true }
+    );
+    canvas.addEventListener(
+      "touchmove",
+      (e) => {
+        if (e.touches.length === 1) {
+          moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+        } else if (e.touches.length === 2) {
+          e.preventDefault();
+          const dist = touchDistance(e.touches);
+          this.zoomBy((pinchStartDist - dist) * 0.15);
+          pinchStartDist = dist;
+        }
+      },
+      { passive: false }
+    );
+    canvas.addEventListener("touchend", endDrag);
+  }
+
+  /** WASD/arrow keys pan the camera target across the map, relative to facing direction. */
+  private setupKeyboardControls(): void {
+    const keyToFlag: Record<string, keyof typeof this.panFlags> = {
+      w: "up",
+      arrowup: "up",
+      s: "down",
+      arrowdown: "down",
+      a: "left",
+      arrowleft: "left",
+      d: "right",
+      arrowright: "right",
+    };
+    window.addEventListener("keydown", (e) => {
+      const flag = keyToFlag[e.key.toLowerCase()];
+      if (flag) this.panFlags[flag] = true;
+    });
+    window.addEventListener("keyup", (e) => {
+      const flag = keyToFlag[e.key.toLowerCase()];
+      if (flag) this.panFlags[flag] = false;
     });
   }
 
+  /** Used by both the on-screen D-pad buttons and (indirectly) keyboard. */
+  setPanFlag(direction: "up" | "down" | "left" | "right", active: boolean): void {
+    this.panFlags[direction] = active;
+  }
+
+  zoomBy(delta: number): void {
+    this.camDistance = THREE.MathUtils.clamp(this.camDistance + delta, 12, 160);
+    this.updateCameraPosition();
+  }
+
+  resetCamera(): void {
+    this.camTarget = { x: 0, z: 0 };
+    this.camAngle = 0;
+    this.camPitch = 0.7;
+    this.camDistance = 55;
+    this.updateCameraPosition();
+  }
+
+  private applyPanFlags(): void {
+    const { up, down, left, right } = this.panFlags;
+    if (!up && !down && !left && !right) return;
+
+    // Move relative to where the camera is currently facing, like a
+    // free-roam viewer: "forward" is toward the look-at point.
+    const forward = { x: -Math.sin(this.camAngle), z: -Math.cos(this.camAngle) };
+    const strafe = { x: Math.cos(this.camAngle), z: -Math.sin(this.camAngle) };
+    let dx = 0;
+    let dz = 0;
+    if (up) {
+      dx += forward.x;
+      dz += forward.z;
+    }
+    if (down) {
+      dx -= forward.x;
+      dz -= forward.z;
+    }
+    if (right) {
+      dx += strafe.x;
+      dz += strafe.z;
+    }
+    if (left) {
+      dx -= strafe.x;
+      dz -= strafe.z;
+    }
+    const len = Math.hypot(dx, dz) || 1;
+    this.camTarget.x = THREE.MathUtils.clamp(this.camTarget.x + (dx / len) * this.PAN_SPEED, -this.PAN_BOUND, this.PAN_BOUND);
+    this.camTarget.z = THREE.MathUtils.clamp(this.camTarget.z + (dz / len) * this.PAN_SPEED, -this.PAN_BOUND, this.PAN_BOUND);
+    this.updateCameraPosition();
+  }
+
   private updateCameraPosition(): void {
-    const x = Math.sin(this.camAngle) * this.camDistance;
-    const z = Math.cos(this.camAngle) * this.camDistance;
-    this.camera.position.set(x, this.camDistance * 0.65, z);
-    this.camera.lookAt(0, 0, 0);
+    const horizontalRadius = this.camDistance * Math.cos(this.camPitch);
+    const height = this.camDistance * Math.sin(this.camPitch);
+    const x = this.camTarget.x + Math.sin(this.camAngle) * horizontalRadius;
+    const z = this.camTarget.z + Math.cos(this.camAngle) * horizontalRadius;
+    this.camera.position.set(x, Math.max(2.5, height), z);
+    this.camera.lookAt(this.camTarget.x, 0, this.camTarget.z);
   }
 
   setOnAgentClick(cb: (id: string) => void): void {
@@ -124,14 +259,27 @@ export class TownScene {
 
   private buildOneLocation(loc: WorldLocation): void {
     this.renderedLocationIds.add(loc.id);
+    const group = new THREE.Group();
+    group.position.set(loc.x, 0, loc.z);
 
-    const height = loc.type === "house" ? 4 : loc.type === "park" ? 0.4 : 6;
-    const size = loc.type === "park" ? 10 : loc.type === "public" ? 8 : 6;
-    const geometry =
-      loc.type === "park"
-        ? new THREE.CylinderGeometry(size / 2, size / 2, 0.4, 24)
-        : new THREE.BoxGeometry(size, height, size);
-    const material = loc.modern
+    if (loc.type === "park") {
+      this.addParkDetails(group);
+      this.scene.add(group);
+      this.attachLabel(this.makeLabel(loc.name), () => new THREE.Vector3(loc.x, 1.8, loc.z));
+      if (this.townHub && loc.id !== this.townHub.id) this.buildRoad(this.townHub, loc);
+      return;
+    }
+
+    if (loc.id === "square") {
+      this.addPlazaDetails(group);
+      this.scene.add(group);
+      this.attachLabel(this.makeLabel(loc.name), () => new THREE.Vector3(loc.x, 2, loc.z));
+      return; // it IS the hub -- nothing to connect a road to
+    }
+
+    const height = loc.type === "house" ? 3.6 : 6;
+    const size = loc.type === "public" ? 8 : 6;
+    const wallMat = loc.modern
       ? new THREE.MeshStandardMaterial({
           color: MODERN_COLOR,
           emissive: MODERN_EMISSIVE,
@@ -140,26 +288,151 @@ export class TownScene {
           roughness: 0.25,
         })
       : new THREE.MeshStandardMaterial({ color: BUILDING_COLORS[loc.type] });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(loc.x, height / 2, loc.z);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    this.scene.add(mesh);
 
-    if (loc.type === "park") {
-      for (let i = 0; i < 6; i++) {
-        const tree = makeTree();
-        const angle = (i / 6) * Math.PI * 2;
-        tree.position.set(loc.x + Math.cos(angle) * 4, 0, loc.z + Math.sin(angle) * 4);
-        this.scene.add(tree);
-      }
+    const walls = new THREE.Mesh(new THREE.BoxGeometry(size, height, size), wallMat);
+    walls.position.y = height / 2;
+    walls.castShadow = true;
+    walls.receiveShadow = true;
+    group.add(walls);
+
+    if (loc.type === "house") {
+      this.addHouseDetails(group, size, height);
+    } else {
+      this.addFacadeDetails(group, loc, size, height);
     }
 
+    this.scene.add(group);
+
     const label = this.makeLabel(loc.modern ? `✨ ${loc.name}` : loc.name);
-    this.attachLabel(label, () => new THREE.Vector3(loc.x, height + 1.2, loc.z));
+    const labelHeight = height + (loc.type === "house" ? 2.6 : 1.2);
+    this.attachLabel(label, () => new THREE.Vector3(loc.x, labelHeight, loc.z));
 
     if (this.townHub && loc.id !== this.townHub.id) {
       this.buildRoad(this.townHub, loc);
+    }
+  }
+
+  /** Pitched roof, door, and lit windows -- a house silhouette instead of a bare box. */
+  private addHouseDetails(group: THREE.Group, size: number, height: number): void {
+    const roof = new THREE.Mesh(
+      new THREE.ConeGeometry(size * 0.78, 1.8, 4),
+      new THREE.MeshStandardMaterial({ color: 0x5a3a2e })
+    );
+    roof.rotation.y = Math.PI / 4;
+    roof.position.y = height + 0.9;
+    roof.castShadow = true;
+    group.add(roof);
+
+    const door = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1.8),
+      new THREE.MeshStandardMaterial({ color: 0x2c2018 })
+    );
+    door.position.set(0, 0.9, size / 2 + 0.02);
+    group.add(door);
+
+    const windowMat = new THREE.MeshStandardMaterial({
+      color: 0xbfe3ff,
+      emissive: 0x6fa8dc,
+      emissiveIntensity: 0.45,
+    });
+    for (const ox of [-size / 4, size / 4]) {
+      const win = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.8), windowMat);
+      win.position.set(ox, height * 0.62, size / 2 + 0.02);
+      group.add(win);
+    }
+  }
+
+  /** Roof trim + a window grid on the front facade, plus an awning for shops/cafes. */
+  private addFacadeDetails(group: THREE.Group, loc: WorldLocation, size: number, height: number): void {
+    const trim = new THREE.Mesh(
+      new THREE.BoxGeometry(size + 0.4, 0.3, size + 0.4),
+      new THREE.MeshStandardMaterial({ color: 0x1c2534 })
+    );
+    trim.position.y = height + 0.15;
+    group.add(trim);
+
+    const windowMat = new THREE.MeshStandardMaterial({
+      color: loc.modern ? 0xdff7ff : 0xbfe3ff,
+      emissive: loc.modern ? 0x2fa8c9 : 0x6fa8dc,
+      emissiveIntensity: 0.5,
+    });
+    const cols = 3;
+    const rows = loc.type === "public" ? 3 : 2;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const win = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.95), windowMat);
+        const ox = (c - (cols - 1) / 2) * (size / (cols + 0.6));
+        const oy = height * (0.3 + r * 0.28);
+        win.position.set(ox, Math.min(height - 0.5, oy), size / 2 + 0.02);
+        group.add(win);
+      }
+    }
+
+    if (loc.type === "shop" || loc.type === "cafe") {
+      const awning = new THREE.Mesh(
+        new THREE.BoxGeometry(size + 0.6, 0.25, 1.2),
+        new THREE.MeshStandardMaterial({ color: loc.type === "cafe" ? 0x7a3040 : 0x7a5c28 })
+      );
+      awning.position.set(0, height * 0.55, size / 2 + 0.6);
+      awning.rotation.x = -0.15;
+      awning.castShadow = true;
+      group.add(awning);
+    }
+  }
+
+  private addParkDetails(group: THREE.Group): void {
+    const disc = new THREE.Mesh(
+      new THREE.CylinderGeometry(5, 5, 0.4, 24),
+      new THREE.MeshStandardMaterial({ color: BUILDING_COLORS.park })
+    );
+    disc.position.y = 0.2;
+    disc.receiveShadow = true;
+    group.add(disc);
+    for (let i = 0; i < 6; i++) {
+      const tree = makeTree();
+      const angle = (i / 6) * Math.PI * 2;
+      tree.position.set(Math.cos(angle) * 4, 0, Math.sin(angle) * 4);
+      group.add(tree);
+    }
+    const bench = new THREE.Mesh(
+      new THREE.BoxGeometry(1.6, 0.5, 0.5),
+      new THREE.MeshStandardMaterial({ color: 0x6b4a34 })
+    );
+    bench.position.set(0, 0.45, 0);
+    bench.castShadow = true;
+    group.add(bench);
+  }
+
+  /** The town square: open pavement with a small fountain, not a building. */
+  private addPlazaDetails(group: THREE.Group): void {
+    const pavement = new THREE.Mesh(
+      new THREE.CylinderGeometry(7, 7, 0.25, 32),
+      new THREE.MeshStandardMaterial({ color: 0x8a8a86 })
+    );
+    pavement.position.y = 0.12;
+    pavement.receiveShadow = true;
+    group.add(pavement);
+
+    const basin = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.6, 1.8, 0.5, 20),
+      new THREE.MeshStandardMaterial({ color: 0x5a6672 })
+    );
+    basin.position.y = 0.5;
+    basin.castShadow = true;
+    group.add(basin);
+
+    const spout = new THREE.Mesh(
+      new THREE.ConeGeometry(0.25, 1.1, 12),
+      new THREE.MeshStandardMaterial({ color: 0xbfe3ff, emissive: 0x3d7ea8, emissiveIntensity: 0.3 })
+    );
+    spout.position.y = 1.2;
+    group.add(spout);
+
+    for (let i = 0; i < 4; i++) {
+      const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      const lamp = makeLampPost();
+      lamp.position.set(Math.cos(angle) * 5.5, 0, Math.sin(angle) * 5.5);
+      group.add(lamp);
     }
   }
 
@@ -310,6 +583,7 @@ export class TownScene {
     };
 
     const tick = () => {
+      this.applyPanFlags();
       for (const visual of this.agentVisuals.values()) {
         visual.group.position.x += (visual.targetX - visual.group.position.x) * 0.12;
         visual.group.position.z += (visual.targetZ - visual.group.position.z) * 0.12;
@@ -347,6 +621,12 @@ export class TownScene {
   }
 }
 
+function touchDistance(touches: TouchList): number {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.hypot(dx, dy);
+}
+
 function makeTree(): THREE.Group {
   const g = new THREE.Group();
   const trunk = new THREE.Mesh(
@@ -360,5 +640,21 @@ function makeTree(): THREE.Group {
   );
   leaves.position.y = 1.5;
   g.add(trunk, leaves);
+  return g;
+}
+
+function makeLampPost(): THREE.Group {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.06, 0.08, 2.4, 8),
+    new THREE.MeshStandardMaterial({ color: 0x2a2a2e })
+  );
+  pole.position.y = 1.2;
+  const bulb = new THREE.Mesh(
+    new THREE.SphereGeometry(0.18, 10, 10),
+    new THREE.MeshStandardMaterial({ color: 0xfff2c0, emissive: 0xffcf6b, emissiveIntensity: 0.9 })
+  );
+  bulb.position.y = 2.45;
+  g.add(pole, bulb);
   return g;
 }
