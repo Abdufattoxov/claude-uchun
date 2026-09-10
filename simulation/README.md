@@ -26,7 +26,49 @@ was touched.
 | 5. Decision system + LLM interface | ✅ | Utility AI + pluggable LLM (Ollama / deterministic fallback) |
 | 6. Communication & relationships | ✅ | Co-located agents converse; relationship state machine |
 | Admin dashboard + unknown events | ✅ | Web UI: inspect agents, control time/weather, inject events |
+| Self-improvement & civic development | ✅ | Agents grow career skill and complete/replace goals; the town itself expands from their collective labor — see below |
 | 7-11 (economy depth, family/generations, 10k-agent scaling) | 📋 Planned | See `ROADMAP.md` |
+
+### Self-improvement and civic development
+
+Two systems layered on top of the phase 1-6 MVP make agents feel like
+they're perpetually striving, and make the town visibly grow as a
+result of their own work rather than the admin dashboard:
+
+- **Career skill & tiers** (`server/src/agent/labels.ts`,
+  `AgentEngine.growSkill`): an agent's `skill` (0-100) grows slowly
+  while they're on shift, scaled by conscientiousness. Crossing a
+  threshold changes their displayed title (e.g. "novvoy" → "usta
+  novvoy" → "professional novvoy" → "bosh novvoy") and raises their
+  wage multiplier — a permanent, visible payoff for having worked, not
+  just a number in an inspector.
+- **Goals that never run out** (`AgentEngine.updateGoals`,
+  `agent/goalPool.ts`): each goal's progress is recomputed from the
+  agent's actual state (skill for career goals, relationship count for
+  social goals, savings for personal goals, best relationship affinity
+  for romantic goals). On completion it's logged as a memory and
+  immediately replaced with a fresh goal from a pool matching that
+  kind, so agents keep having something to work toward.
+- **Civic development** (`server/src/world/civicDevelopment.ts`,
+  `WorldEngine.contributeToCivicFund`): a fixed share of every wage an
+  agent earns feeds a shared town fund. Crossing a milestone
+  permanently and persistently adds a new landmark building at the
+  town's edge (a clinic, a library, a solar park, an innovation hub, a
+  tower) — the town literally expands outward over sim-time as a
+  visible consequence of agents' own labor, not an admin action. New
+  landmarks render with a distinct glass/glow look in the 3D view and
+  become real destinations agents can wander to.
+- **Reflections** (`AgentEngine.maybeReflect`,
+  `agent/conversation.ts#generateReflection`): once per sim-day, an
+  agent gets an LLM-generated moment of reflection on how their life
+  is going, stored as a high-importance memory — this is what the
+  `reflection` memory kind (defined from the start but previously
+  unused) is for.
+
+All of this is visible in the dashboard: the "Shahar rivojlanishi"
+panel shows fund progress toward the next landmark, the event log
+narrates tier-ups/goal completions/new buildings, and an agent's
+inspector shows their current skill bar.
 
 ## Architecture
 

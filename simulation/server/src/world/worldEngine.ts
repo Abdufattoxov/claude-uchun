@@ -1,6 +1,8 @@
 import type Database from "better-sqlite3";
-import type { Weather, WorldEvent, WorldEventKind } from "../types.js";
+import type { Weather, WorldEvent, WorldEventKind, WorldLocation } from "../types.js";
 import { TimeSystem } from "../time/timeSystem.js";
+import { LOCATIONS, findLocation as findStaticLocation } from "./locations.js";
+import { milestoneToLocation, nextMilestone, type CivicMilestone } from "./civicDevelopment.js";
 import { randomUUID } from "node:crypto";
 
 const WEATHER_TRANSITIONS: Record<Weather, Weather[]> = {
@@ -11,15 +13,19 @@ const WEATHER_TRANSITIONS: Record<Weather, Weather[]> = {
 };
 
 /**
- * Owns global world state: the clock, weather, and the log of world
- * events (including admin-injected ones). Agents perceive this state
- * through normal senses -- nothing here is pushed into their reasoning
- * as "you are being observed" or "the admin did X".
+ * Owns global world state: the clock, weather, the town's locations
+ * (the original fixed layout plus anything the civic development
+ * system has built since), and the log of world events (including
+ * admin-injected ones). Agents perceive this state through normal
+ * senses -- nothing here is pushed into their reasoning as "you are
+ * being observed" or "the admin did X".
  */
 export class WorldEngine {
   readonly time: TimeSystem;
   private weather: Weather;
   private readonly db: Database.Database;
+  private dynamicLocations: WorldLocation[] = [];
+  private civicFund = 0;
 
   constructor(db: Database.Database, time?: TimeSystem) {
     this.db = db;
@@ -43,6 +49,22 @@ export class WorldEngine {
       .prepare("SELECT value FROM world_state WHERE key = 'multiplier'")
       .get() as { value: string } | undefined;
     if (speedRow) this.time.setMultiplier(Number(speedRow.value));
+
+    const fundRow = this.db
+      .prepare("SELECT value FROM world_state WHERE key = 'civic_fund'")
+      .get() as { value: string } | undefined;
+    if (fundRow) this.civicFund = Number(fundRow.value);
+
+    const locRows = this.db.prepare("SELECT * FROM locations").all() as Array<Record<string, unknown>>;
+    this.dynamicLocations = locRows.map((r) => ({
+      id: r.id as string,
+      name: r.name as string,
+      type: r.type as WorldLocation["type"],
+      x: r.x as number,
+      z: r.z as number,
+      radius: r.radius as number,
+      modern: Boolean(r.modern),
+    }));
   }
 
   persistState(): void {
@@ -53,6 +75,7 @@ export class WorldEngine {
     upsert.run("weather", this.weather);
     upsert.run("total_minutes", String(this.time.getTotalMinutes()));
     upsert.run("multiplier", String(this.time.getMultiplier()));
+    upsert.run("civic_fund", String(this.civicFund));
   }
 
   getWeather(): Weather {
@@ -71,6 +94,56 @@ export class WorldEngine {
   setWeather(weather: Weather, cause: string): WorldEvent {
     this.weather = weather;
     return this.logEvent("weather_change", { weather, cause });
+  }
+
+  // ---- Locations (static town layout + civic-development landmarks) ----
+
+  allLocations(): WorldLocation[] {
+    return [...LOCATIONS, ...this.dynamicLocations];
+  }
+
+  findLocation(id: string): WorldLocation | undefined {
+    return findStaticLocation(id) ?? this.dynamicLocations.find((l) => l.id === id);
+  }
+
+  /** Public/park spots agents can wander to organically, including unlocked landmarks. */
+  leisureLocations(): WorldLocation[] {
+    return this.allLocations().filter((l) => l.type === "public" || l.type === "park");
+  }
+
+  private addLocation(loc: WorldLocation): void {
+    this.dynamicLocations.push(loc);
+    this.db
+      .prepare(
+        `INSERT INTO locations (id, name, type, x, z, radius, modern, created_at_min) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(loc.id, loc.name, loc.type, loc.x, loc.z, loc.radius, loc.modern ? 1 : 0, this.time.getTotalMinutes());
+  }
+
+  // ---- Civic development: the town grows from agents' own labor ----
+
+  getCivicFund(): number {
+    return this.civicFund;
+  }
+
+  getNextMilestone(): CivicMilestone | undefined {
+    const builtIds = new Set(this.dynamicLocations.map((l) => l.id));
+    return nextMilestone(builtIds);
+  }
+
+  /** Called whenever an agent gets paid; a slice of every wage builds the town. */
+  contributeToCivicFund(amount: number): void {
+    if (amount <= 0) return;
+    this.civicFund += amount;
+    const milestone = this.getNextMilestone();
+    if (milestone && this.civicFund >= milestone.threshold) {
+      this.addLocation(milestoneToLocation(milestone));
+      this.logEvent("civic_development", {
+        name: milestone.name,
+        locationId: milestone.id,
+        fundTotal: Math.round(this.civicFund),
+      });
+    }
   }
 
   logEvent(kind: WorldEventKind, payload: Record<string, unknown>): WorldEvent {

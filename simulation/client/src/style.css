@@ -124,12 +124,36 @@ button:hover {
   background: #4a6ee0;
 }
 
-#inspector {
+#civic-panel {
   position: absolute;
   top: 56px;
   right: 12px;
+  width: 200px;
+  background: rgba(15, 20, 32, 0.82);
+  border: 1px solid #2c6b52;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  z-index: 10;
+}
+.civic-title {
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+.civic-bar {
+  margin-top: 4px;
+  height: 6px;
+}
+.civic-bar > i {
+  background: #3ecf8e;
+}
+
+#inspector {
+  position: absolute;
+  top: 140px;
+  right: 12px;
   width: 340px;
-  max-height: calc(100vh - 90px);
+  max-height: calc(100vh - 174px);
   overflow-y: auto;
   background: rgba(12, 16, 27, 0.94);
   border: 1px solid #2c3a52;
@@ -274,9 +298,25 @@ button:hover {
     width: 148px;
   }
 
+  #civic-panel {
+    top: 50px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .civic-bar {
+    flex: 1 1 100%;
+    margin-top: 2px;
+  }
+
   /* Admin panelni yig'iladigan (collapsible) qilib, ekranning katta qismini bosmasin */
   #admin-panel {
-    top: 50px;
+    top: 92px;
     left: 8px;
     right: 8px;
     bottom: auto;

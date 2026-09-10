@@ -25,6 +25,8 @@ interface DecisionContext {
   agent: Agent;
   time: WorldTime;
   nearbyAgentIds: string[];
+  /** Public/park spots, including any landmarks civic development has unlocked. */
+  leisureLocations?: WorldLocation[];
 }
 
 const NEED_DECAY_WEIGHT: Record<keyof Needs, number> = {
@@ -86,6 +88,19 @@ export function decideNextAction(ctx: DecisionContext): AgentAction {
     const careerGoal = agent.goals.find((g) => g.kind === "career");
     const drive = 0.55 + (careerGoal?.priority ?? 0) * 0.3 + agent.personality.conscientiousness * 0.2;
     candidates.push({ action: mkAction("work", agent.workId, ACTIVITY.working, 4 * 60), score: drive });
+  }
+
+  // 3b. Curiosity about what the town's own growth has built recently --
+  // open-ended, stronger for curious (open) agents. Bypasses mkAction's
+  // static-location lookup since these ids come straight from the world
+  // engine's authoritative (static + civic-built) location list.
+  const modernSpots = (ctx.leisureLocations ?? []).filter((l) => l.modern);
+  if (modernSpots.length > 0) {
+    const spot = modernSpots[Math.floor(Math.random() * modernSpots.length)];
+    candidates.push({
+      action: { type: "relax", locationId: spot.id, activityLabel: ACTIVITY.relaxingFun, durationMin: 45 },
+      score: needScore(agent.needs.fun) * 0.45 * (0.5 + agent.personality.openness * 0.7),
+    });
   }
 
   // 4. Shopping: mild, occasional pull, mostly need-independent.

@@ -1,17 +1,21 @@
 import type Database from "better-sqlite3";
-import type { Agent, Needs } from "../types.js";
+import type { Agent, Goal, Needs } from "../types.js";
 import { WorldEngine } from "../world/worldEngine.js";
 import { AgentRepository } from "./agentRepository.js";
 import { createInitialAgents, defaultSchedule } from "./agentFactory.js";
-import { findLocation } from "../world/locations.js";
 import { decideNextAction, type AgentAction } from "../decision/decisionSystem.js";
 import { MemoryStore } from "../memory/memoryStore.js";
 import { RelationshipStore } from "../relationship/relationshipStore.js";
 import { EconomyStore, wageFor } from "../economy/economyStore.js";
-import { generateConversationLine, interpretUnknownEvent } from "./conversation.js";
+import { generateConversationLine, generateReflection, interpretUnknownEvent } from "./conversation.js";
 import { ACTIVITY, isTalkingActivity, talkingWithLabel, walkingToLabel } from "./activityLabels.js";
-import { NEED_LABEL_UZ, occupationLabel } from "./labels.js";
+import { NEED_LABEL_UZ, occupationTitle, skillWageMultiplier, tierFloor } from "./labels.js";
+import { pickNextGoal } from "./goalPool.js";
 import { randomUUID } from "node:crypto";
+
+const REFLECTION_INTERVAL_MIN = 24 * 60; // once per sim-day per agent
+const SKILL_GROWTH_PER_MIN = 0.0035;
+const CIVIC_CONTRIBUTION_RATE = 0.08; // share of every wage that builds the town
 
 const MOVE_SPEED_PER_TICK = 3.2; // world units; decoupled from sim-time multiplier
 const ARRIVE_EPSILON = 0.4;
@@ -35,6 +39,7 @@ export interface AgentPublicState {
   name: string;
   age: number;
   occupation?: string;
+  skill: number;
   position: { x: number; z: number };
   currentLocationId?: string;
   currentActivity: string;
@@ -47,6 +52,7 @@ export interface AgentPublicState {
 interface RuntimeExtra {
   pendingAction?: AgentAction;
   talkingWith?: string;
+  lastReflectionMin?: number;
 }
 
 export class AgentEngine {
@@ -94,6 +100,7 @@ export class AgentEngine {
       name: a.name,
       age: a.age,
       occupation: a.occupation,
+      skill: a.skill,
       position: a.position,
       currentLocationId: a.currentLocationId,
       currentActivity: a.currentActivity,
@@ -131,9 +138,11 @@ export class AgentEngine {
         arrived && (agent.activityEndsAtMin === undefined || now >= agent.activityEndsAtMin) && !runtime.talkingWith;
 
       if (needsDecision) {
+        this.updateGoals(agent, now);
         this.makeDecision(agent, now);
       }
 
+      this.maybeReflect(agent, now);
       agent.updatedAtMin = now;
     }
 
@@ -190,22 +199,56 @@ export class AgentEngine {
   private applyActivityEffects(agent: Agent, deltaMinutes: number): void {
     const key = activityEffectKey(agent);
     const effects = ACTIVITY_EFFECTS[key];
-    if (!effects) return;
-    (Object.keys(effects) as Array<keyof Needs>).forEach((need) => {
-      const delta = (effects[need] ?? 0) * deltaMinutes;
-      agent.needs[need] = clamp(agent.needs[need] + delta);
+    if (effects) {
+      (Object.keys(effects) as Array<keyof Needs>).forEach((need) => {
+        const delta = (effects[need] ?? 0) * deltaMinutes;
+        agent.needs[need] = clamp(agent.needs[need] + delta);
+      });
+    }
+
+    if (key === "work" && agent.occupation) {
+      this.growSkill(agent, deltaMinutes);
+    }
+  }
+
+  /** "Working on themselves": skill compounds slowly while on shift, permanently. */
+  private growSkill(agent: Agent, deltaMinutes: number): void {
+    const beforeTier = tierFloor(agent.skill);
+    const rate = SKILL_GROWTH_PER_MIN * (0.6 + agent.personality.conscientiousness * 0.8);
+    agent.skill = clamp(agent.skill + rate * deltaMinutes);
+    if (tierFloor(agent.skill) === beforeTier) return;
+
+    const now = this.world.time.getTotalMinutes();
+    const title = occupationTitle(agent.occupation, agent.skill);
+    this.memories.add({
+      agentId: agent.id,
+      simMinute: now,
+      kind: "reflection",
+      description: `Mahorati oshib, endi "${title}" darajasiga yetdi.`,
+      participants: [],
+      locationId: agent.currentLocationId,
+      importance: 0.6,
     });
+    this.world.logEvent("career_tier_up", { agentId: agent.id, name: agent.name, title });
   }
 
   private makeDecision(agent: Agent, now: number): void {
     const nearbyAgentIds = this.nearbyAgents(agent);
-    const action = decideNextAction({ agent, time: this.world.time.snapshot(), nearbyAgentIds });
+    const action = decideNextAction({
+      agent,
+      time: this.world.time.snapshot(),
+      nearbyAgentIds,
+      leisureLocations: this.world.leisureLocations(),
+    });
 
     // Settle wages if finishing a work shift (fixed 4h shifts, see decisionSystem).
+    // Skill (grown continuously during the shift, see growSkill) raises the wage --
+    // and a slice of every wage funds the town's own civic development.
     if (agent.currentActivity === ACTIVITY.working && agent.occupation) {
-      const pay = Math.round(wageFor(agent.occupation) * 4 * 100) / 100;
+      const pay = Math.round(wageFor(agent.occupation) * skillWageMultiplier(agent.skill) * 4 * 100) / 100;
       agent.money += pay;
-      this.economy.record(agent.id, "income", pay, `${occupationLabel(agent.occupation)} sifatida ish haqi`, now);
+      this.economy.record(agent.id, "income", pay, `${occupationTitle(agent.occupation, agent.skill)} sifatida ish haqi`, now);
+      this.world.contributeToCivicFund(pay * CIVIC_CONTRIBUTION_RATE);
     }
     if (action.type === "eat" && action.locationId === "cafe") {
       const cost = 6;
@@ -222,7 +265,7 @@ export class AgentEngine {
       }
     }
 
-    const loc = findLocation(action.locationId);
+    const loc = this.world.findLocation(action.locationId);
     const runtime = this.extra.get(agent.id)!;
     runtime.pendingAction = action;
     if (loc && distance(agent.position, loc) <= 0.5) {
@@ -273,7 +316,7 @@ export class AgentEngine {
     target.activityEndsAtMin = now + 20;
 
     const relationship = this.relationships.adjustAffinity(initiator.id, target.id, 4, now);
-    const loc = findLocation(initiator.currentLocationId ?? "square")?.name ?? "ko'chada";
+    const loc = this.world.findLocation(initiator.currentLocationId ?? "square")?.name ?? "ko'chada";
 
     this.memories.add({
       agentId: initiator.id,
@@ -307,6 +350,80 @@ export class AgentEngine {
           provider,
           simMinute: now,
         });
+      })
+      .catch(() => void 0);
+  }
+
+  /**
+   * Recomputed from current state rather than incrementally accumulated --
+   * simpler and self-correcting (e.g. if a relationship later sours, a
+   * social goal's progress drops back down instead of staying "stuck" at
+   * a stale high value). Completing a goal immediately queues a fresh
+   * one so an agent's ambitions never just run out.
+   */
+  private updateGoals(agent: Agent, now: number): void {
+    for (let i = 0; i < agent.goals.length; i++) {
+      const goal = agent.goals[i];
+      goal.progress = this.computeGoalProgress(agent, goal);
+      if (goal.progress < 1) continue;
+
+      this.memories.add({
+        agentId: agent.id,
+        simMinute: now,
+        kind: "reflection",
+        description: `Maqsadiga erishdi: "${goal.description}".`,
+        participants: [],
+        locationId: agent.currentLocationId,
+        importance: 0.7,
+      });
+      this.world.logEvent("goal_completed", { agentId: agent.id, name: agent.name, description: goal.description });
+      agent.goals[i] = { id: randomUUID(), ...pickNextGoal(goal.kind, goal.priority) };
+    }
+  }
+
+  private computeGoalProgress(agent: Agent, goal: Goal): number {
+    switch (goal.kind) {
+      case "career":
+        return agent.skill / 100;
+      case "personal":
+        return Math.min(1, agent.money / 400);
+      case "social": {
+        const rels = this.relationships.allFor(agent.id);
+        const friendRank = this.relationships.rank("friend");
+        const friendCount = rels.filter((r) => this.relationships.rank(r.state) >= friendRank).length;
+        return Math.min(1, friendCount / 3);
+      }
+      case "romantic": {
+        const rels = this.relationships.allFor(agent.id);
+        if (rels.some((r) => r.state === "partner")) return 1;
+        const bestAffinity = rels.reduce((max, r) => Math.max(max, r.affinity), 0);
+        return Math.max(0, Math.min(1, bestAffinity / 80));
+      }
+      default:
+        return goal.progress;
+    }
+  }
+
+  /** Once a sim-day, off the critical path: a quiet moment to think, not a tick-loop cost. */
+  private maybeReflect(agent: Agent, now: number): void {
+    const runtime = this.extra.get(agent.id)!;
+    const last = runtime.lastReflectionMin ?? agent.createdAtMin;
+    if (now - last < REFLECTION_INTERVAL_MIN) return;
+    runtime.lastReflectionMin = now; // set before awaiting so a slow model can't cause repeat fires
+
+    const memories = this.memories.recentShortTerm(agent.id, 8);
+    generateReflection(agent, memories)
+      .then(({ line, provider }) => {
+        this.memories.add({
+          agentId: agent.id,
+          simMinute: now,
+          kind: "reflection",
+          description: line,
+          participants: [],
+          locationId: agent.currentLocationId,
+          importance: 0.75,
+        });
+        this.world.logEvent("admin_message", { kind: "reflection", agent: agent.name, line, provider, simMinute: now });
       })
       .catch(() => void 0);
   }

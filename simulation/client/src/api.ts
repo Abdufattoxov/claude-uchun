@@ -1,8 +1,8 @@
-import type { AgentDetail, StateMessage, WorldEventView, WorldLocation } from "./types";
+import type { AgentDetail, StateMessage, WorldEventView, WorldInfo } from "./types";
 
 const API_BASE = "/api";
 
-export async function fetchWorld(): Promise<{ locations: WorldLocation[] }> {
+export async function fetchWorld(): Promise<WorldInfo> {
   const res = await fetch(`${API_BASE}/world`);
   return res.json();
 }

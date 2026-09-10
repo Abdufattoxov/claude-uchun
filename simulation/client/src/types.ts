@@ -17,6 +17,18 @@ export interface WorldLocation {
   x: number;
   z: number;
   radius: number;
+  modern?: boolean;
+}
+
+export interface NextMilestone {
+  name: string;
+  threshold: number;
+}
+
+export interface WorldInfo {
+  locations: WorldLocation[];
+  civicFund: number;
+  nextMilestone: NextMilestone | null;
 }
 
 export interface Needs {
@@ -46,6 +58,7 @@ export interface AgentPublicState {
   name: string;
   age: number;
   occupation?: string;
+  skill: number;
   position: { x: number; z: number };
   currentLocationId?: string;
   currentActivity: string;

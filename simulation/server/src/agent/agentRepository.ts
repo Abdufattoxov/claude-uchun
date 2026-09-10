@@ -18,18 +18,18 @@ export class AgentRepository {
     this.db
       .prepare(
         `INSERT INTO agents (
-           id, name, age, personality, needs, emotion, beliefs, goals, money,
+           id, name, age, personality, needs, emotion, beliefs, goals, money, skill,
            occupation, home_id, work_id, pos_x, pos_z, current_location_id,
            current_activity, activity_ends_at_min, created_at_min, updated_at_min
          ) VALUES (
-           @id, @name, @age, @personality, @needs, @emotion, @beliefs, @goals, @money,
+           @id, @name, @age, @personality, @needs, @emotion, @beliefs, @goals, @money, @skill,
            @occupation, @homeId, @workId, @posX, @posZ, @currentLocationId,
            @currentActivity, @activityEndsAtMin, @createdAtMin, @updatedAtMin
          )
          ON CONFLICT(id) DO UPDATE SET
            name=excluded.name, age=excluded.age, personality=excluded.personality,
            needs=excluded.needs, emotion=excluded.emotion, beliefs=excluded.beliefs,
-           goals=excluded.goals, money=excluded.money, occupation=excluded.occupation,
+           goals=excluded.goals, money=excluded.money, skill=excluded.skill, occupation=excluded.occupation,
            home_id=excluded.home_id, work_id=excluded.work_id, pos_x=excluded.pos_x,
            pos_z=excluded.pos_z, current_location_id=excluded.current_location_id,
            current_activity=excluded.current_activity,
@@ -46,6 +46,7 @@ export class AgentRepository {
         beliefs: JSON.stringify(agent.beliefs),
         goals: JSON.stringify(agent.goals),
         money: agent.money,
+        skill: agent.skill,
         occupation: agent.occupation ?? null,
         homeId: agent.homeId,
         workId: agent.workId ?? null,
@@ -72,6 +73,7 @@ function rowToAgent(r: Record<string, unknown>): Agent {
     beliefs: JSON.parse(r.beliefs as string),
     goals: JSON.parse(r.goals as string),
     money: r.money as number,
+    skill: (r.skill as number) ?? 0,
     occupation: (r.occupation as string) ?? undefined,
     homeId: r.home_id as string,
     workId: (r.work_id as string) ?? undefined,

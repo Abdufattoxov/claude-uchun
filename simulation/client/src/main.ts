@@ -1,7 +1,7 @@
 import { TownScene } from "./scene";
 import { connectWebSocket, fetchAgentDetail, fetchEvents, fetchWorld, injectEvent, setPaused, setSpeed, setWeather } from "./api";
 import type { AgentPublicState, StateMessage } from "./types";
-import { actionTypeLabel, goalKindLabel, needLabel, occupationLabel, relationshipStateLabel, weatherLabel } from "./i18n";
+import { actionTypeLabel, goalKindLabel, needLabel, occupationTitle, relationshipStateLabel, weatherLabel } from "./i18n";
 
 const canvas = document.getElementById("scene") as HTMLCanvasElement;
 const labelLayer = document.createElement("div");
@@ -24,6 +24,8 @@ const inspectorCloseBtn = document.getElementById("inspector-close")!;
 const eventTextEl = document.getElementById("event-text") as HTMLTextAreaElement;
 const eventSubmitBtn = document.getElementById("event-submit") as HTMLButtonElement;
 const eventLogEl = document.getElementById("event-log")!;
+const civicNextEl = document.getElementById("civic-next")!;
+const civicBarFillEl = document.getElementById("civic-bar-fill") as HTMLElement;
 
 let paused = false;
 let selectedAgentId: string | null = null;
@@ -36,14 +38,33 @@ async function bootstrap() {
   scene.buildTown(world.locations);
   scene.setOnAgentClick((id) => selectAgent(id));
   scene.start();
+  updateCivicPanel(world.civicFund, world.nextMilestone);
 
   connectWebSocket(onState);
   pollEvents();
   setInterval(pollEvents, 4000);
+  setInterval(refreshCivicPanel, 5000);
   if (selectedAgentId) refreshInspector();
   setInterval(() => {
     if (selectedAgentId) refreshInspector();
   }, 3000);
+}
+
+function updateCivicPanel(fund: number, next: { name: string; threshold: number } | null): void {
+  if (!next) {
+    civicNextEl.textContent = "Barcha rejalashtirilgan binolar qurib bo'lindi!";
+    civicBarFillEl.style.width = "100%";
+    return;
+  }
+  const pct = Math.min(100, (fund / next.threshold) * 100);
+  civicNextEl.textContent = `Navbatdagi: ${next.name} (${fund}/${next.threshold})`;
+  civicBarFillEl.style.width = `${pct}%`;
+}
+
+async function refreshCivicPanel(): Promise<void> {
+  const world = await fetchWorld();
+  updateCivicPanel(world.civicFund, world.nextMilestone);
+  scene.addLocations(world.locations);
 }
 
 function onState(msg: StateMessage): void {
@@ -116,8 +137,10 @@ async function refreshInspector(): Promise<void> {
   const a = detail.agent;
   inspectorContentEl.innerHTML = `
     <h2>${a.name}</h2>
-    <div class="muted">${a.age} yosh &middot; ${occupationLabel(a.occupation)} &middot; $${a.money.toFixed(2)}</div>
+    <div class="muted">${a.age} yosh &middot; ${occupationTitle(a.occupation, a.skill)} &middot; $${a.money.toFixed(2)}</div>
     <div class="muted">${a.currentActivity}</div>
+    <h4>Mahorat</h4>
+    ${needBar("skill", a.skill)}
     <h4>Ehtiyojlar</h4>
     ${Object.entries(a.needs).map(([k, v]) => needBar(k, v as number)).join("")}
     <h4>Kayfiyat</h4>
@@ -169,18 +192,29 @@ eventSubmitBtn.addEventListener("click", async () => {
 
 async function pollEvents(): Promise<void> {
   const events = await fetchEvents(lastEventPoll);
+  let sawCivicDevelopment = false;
   for (const ev of events.slice().reverse()) {
     if (ev.simMinute <= lastEventPoll) continue;
-    if (ev.kind === "admin_message" && (ev.payload as any).kind === "dialogue") {
-      const p = ev.payload as any;
+    const p = ev.payload as any;
+    if (ev.kind === "admin_message" && p.kind === "dialogue") {
       appendEventLog(`${p.speaker} dan ${p.listener} ga: "${p.line}"`);
+    } else if (ev.kind === "admin_message" && p.kind === "reflection") {
+      appendEventLog(`💭 ${p.agent}: "${p.line}"`);
     } else if (ev.kind === "weather_change") {
-      appendEventLog(`Ob-havo ${weatherLabel((ev.payload as any).weather)} ga o'zgardi (${(ev.payload as any).cause})`);
+      appendEventLog(`Ob-havo ${weatherLabel(p.weather)} ga o'zgardi (${p.cause})`);
     } else if (ev.kind === "unknown_event") {
-      appendEventLog(`Noma'lum hodisa: ${(ev.payload as any).description}`);
+      appendEventLog(`Noma'lum hodisa: ${p.description}`);
+    } else if (ev.kind === "civic_development") {
+      appendEventLog(`🏗️ Shahar rivojlandi: "${p.name}" qurib bitkazildi!`);
+      sawCivicDevelopment = true;
+    } else if (ev.kind === "career_tier_up") {
+      appendEventLog(`⭐ ${p.name} endi "${p.title}" darajasiga yetdi.`);
+    } else if (ev.kind === "goal_completed") {
+      appendEventLog(`✅ ${p.name} maqsadiga erishdi: "${p.description}".`);
     }
   }
   if (events.length) lastEventPoll = Math.max(...events.map((e) => e.simMinute));
+  if (sawCivicDevelopment) refreshCivicPanel();
 }
 
 function appendEventLog(text: string): void {

@@ -17,6 +17,7 @@ export const NEED_LABEL_UZ: Record<string, string> = {
   social: "muloqot",
   fun: "ko'ngilochar",
   hygiene: "gigiena",
+  skill: "mahorat",
 };
 
 export const GOAL_KIND_UZ: Record<string, string> = {
@@ -60,6 +61,21 @@ export function relationshipStateLabel(state: string): string {
 export function occupationLabel(occupation: string | undefined): string {
   if (!occupation) return "ishsiz";
   return OCCUPATION_UZ[occupation] ?? occupation;
+}
+
+/** Mirrors the server's career tiers (server/src/agent/labels.ts) for display. */
+const SKILL_TIERS: Array<{ min: number; suffix: string }> = [
+  { min: 0, suffix: "" },
+  { min: 35, suffix: "usta " },
+  { min: 70, suffix: "professional " },
+  { min: 92, suffix: "bosh " },
+];
+
+export function occupationTitle(occupation: string | undefined, skill: number): string {
+  if (!occupation) return "ishsiz";
+  let tier = SKILL_TIERS[0];
+  for (const t of SKILL_TIERS) if (skill >= t.min) tier = t;
+  return `${tier.suffix}${occupationLabel(occupation)}`;
 }
 
 export function weatherLabel(weather: string): string {

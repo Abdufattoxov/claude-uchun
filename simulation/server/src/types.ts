@@ -28,6 +28,8 @@ export interface WorldLocation {
   /** Radius within which an agent is considered "at" this location. */
   radius: number;
   capacity?: number;
+  /** True for landmarks built later by the civic development system. */
+  modern?: boolean;
 }
 
 export interface Personality {
@@ -109,6 +111,8 @@ export interface Agent {
   goals: Goal[];
   money: number;
   occupation?: string;
+  /** Career mastery, 0..100. Grows while working; unlocks occupation tiers. */
+  skill: number;
   homeId: string;
   workId?: string;
   position: { x: number; z: number };
@@ -143,7 +147,10 @@ export type WorldEventKind =
   | "weather_change"
   | "unknown_event"
   | "admin_message"
-  | "world_object";
+  | "world_object"
+  | "civic_development"
+  | "goal_completed"
+  | "career_tier_up";
 
 export interface WorldEvent {
   id: string;

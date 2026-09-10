@@ -55,6 +55,22 @@ export async function generateConversationLine(
   return { line: text || `${speaker.name} do'stona salomlashadi.`, provider };
 }
 
+/**
+ * Once a sim-day, an agent gets a quiet moment to think back on recent
+ * events -- this is what turns raw short-term memories into a durable,
+ * evolving sense of "how my life is going", without needing to re-read
+ * the whole history every time (see MemoryStore's scored retrieval).
+ */
+export async function generateReflection(
+  agent: Agent,
+  memories: MemoryRecord[]
+): Promise<ConversationTurnResult> {
+  const system = personaPrompt(agent, memories);
+  const user = `Take a quiet moment to think back on your recent days. In 1-2 sentences, reflect on how you feel about your life right now, and anything you've noticed about yourself lately.`;
+  const { text, provider } = await llm.generate({ systemPrompt: system, userPrompt: user, maxTokens: 80, temperature: 0.85 });
+  return { line: text || `${agent.name} bugungi kunlarni xayolidan o'tkazadi.`, provider };
+}
+
 export async function interpretUnknownEvent(
   agent: Agent,
   memories: MemoryRecord[],

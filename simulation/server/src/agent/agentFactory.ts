@@ -107,6 +107,7 @@ export function createInitialAgents(nowMinute: number): Agent[] {
       beliefs: seed.beliefs,
       goals: seed.goals.map((g) => ({ id: randomUUID(), progress: 0, ...g })),
       money: 150,
+      skill: 15,
       occupation: seed.occupation,
       homeId: seed.homeId,
       workId: seed.workId,

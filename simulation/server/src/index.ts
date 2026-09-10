@@ -3,7 +3,6 @@ import { WebSocketServer } from "ws";
 import { createServer } from "node:http";
 import { openDatabase } from "./db/index.js";
 import { SimulationController } from "./controller/simulationController.js";
-import { LOCATIONS } from "./world/locations.js";
 import type { Weather } from "./types.js";
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -19,7 +18,16 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.get("/api/world", (_req, res) => {
-  res.json({ locations: LOCATIONS, time: controller.world.time.snapshot(), weather: controller.world.getWeather(), paused: controller.world.time.isPaused(), multiplier: controller.world.time.getMultiplier() });
+  const next = controller.world.getNextMilestone();
+  res.json({
+    locations: controller.world.allLocations(),
+    time: controller.world.time.snapshot(),
+    weather: controller.world.getWeather(),
+    paused: controller.world.time.isPaused(),
+    multiplier: controller.world.time.getMultiplier(),
+    civicFund: Math.round(controller.world.getCivicFund()),
+    nextMilestone: next ? { name: next.name, threshold: next.threshold } : null,
+  });
 });
 
 app.get("/api/state", (_req, res) => {

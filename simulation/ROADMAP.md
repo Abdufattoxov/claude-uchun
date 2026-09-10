@@ -8,13 +8,16 @@ built yet, so the MVP stays small, inspectable, and correct first.
 
 ## 1. Deeper economy & occupations
 
-Currently: fixed wages by occupation, flat prices for lunch/shopping,
-a simple transaction ledger.
+Currently: wages scale with a per-agent skill that grows while working
+and unlocks career tiers/titles (see README's "Self-improvement and
+civic development"), flat prices for lunch/shopping, a simple
+transaction ledger, and a shared civic fund that unlocks new town
+landmarks as agents collectively earn.
 
 Next:
-- Job market: agents can be laid off, promoted, or switch occupations
-  based on goal progress and workplace "slots" (capacity already
-  exists on `WorldLocation`).
+- Job market: agents can be laid off, or switch occupations entirely
+  (not just tier up within one) based on goal progress and workplace
+  "slots" (capacity already exists on `WorldLocation`).
 - Priced goods per shop (`general_store` sells specific items with
   their own prices/stock) instead of one flat "shopping" cost.
 - Rent/upkeep on houses, savings goals, and simple loans between

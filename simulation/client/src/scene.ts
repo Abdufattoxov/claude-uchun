@@ -10,6 +10,12 @@ const BUILDING_COLORS: Record<WorldLocation["type"], number> = {
   public: 0x6b6f80,
 };
 
+// Landmarks built by the civic development system get a distinct
+// glass-and-glow look so the town's growth is visible at a glance,
+// not just another gray box.
+const MODERN_COLOR = 0x5fd0e8;
+const MODERN_EMISSIVE = 0x1a6b7d;
+
 const AGENT_COLORS = [0xe0a458, 0x5fa8d3, 0xd35f8d, 0x8fd35f, 0xc5a3ff];
 
 interface AgentVisual {
@@ -96,53 +102,78 @@ export class TownScene {
     this.onAgentClick = cb;
   }
 
+  private renderedLocationIds = new Set<string>();
+  private townHub: WorldLocation | null = null;
+
   buildTown(locations: WorldLocation[]): void {
-    for (const loc of locations) {
-      const height = loc.type === "house" ? 4 : loc.type === "park" ? 0.4 : 6;
-      const size = loc.type === "park" ? 10 : loc.type === "public" ? 8 : 6;
-      const geometry =
-        loc.type === "park"
-          ? new THREE.CylinderGeometry(size / 2, size / 2, 0.4, 24)
-          : new THREE.BoxGeometry(size, height, size);
-      const material = new THREE.MeshStandardMaterial({ color: BUILDING_COLORS[loc.type] });
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(loc.x, height / 2, loc.z);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      this.scene.add(mesh);
-
-      if (loc.type === "park") {
-        for (let i = 0; i < 6; i++) {
-          const tree = makeTree();
-          const angle = (i / 6) * Math.PI * 2;
-          tree.position.set(loc.x + Math.cos(angle) * 4, 0, loc.z + Math.sin(angle) * 4);
-          this.scene.add(tree);
-        }
-      }
-
-      const label = this.makeLabel(loc.name);
-      this.attachLabel(label, () => new THREE.Vector3(loc.x, height + 1.2, loc.z));
-    }
-
-    this.buildRoads(locations);
+    this.townHub = locations.find((l) => l.id === "square") ?? null;
+    for (const loc of locations) this.buildOneLocation(loc);
   }
 
-  private buildRoads(locations: WorldLocation[]): void {
-    const roadMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2e });
-    const hub = locations.find((l) => l.id === "square");
-    if (!hub) return;
+  /**
+   * Called when the civic development system unlocks a new landmark
+   * mid-simulation: adds only what's new, so the town visibly grows
+   * outward without rebuilding (and re-flickering) everything else.
+   */
+  addLocations(locations: WorldLocation[]): void {
     for (const loc of locations) {
-      if (loc.id === hub.id) continue;
-      const dx = loc.x - hub.x;
-      const dz = loc.z - hub.z;
-      const length = Math.hypot(dx, dz);
-      const road = new THREE.Mesh(new THREE.PlaneGeometry(length, 2.4), roadMat);
-      road.rotation.x = -Math.PI / 2;
-      road.rotation.z = -Math.atan2(dz, dx);
-      road.position.set(hub.x + dx / 2, 0.01, hub.z + dz / 2);
-      road.receiveShadow = true;
-      this.scene.add(road);
+      if (this.renderedLocationIds.has(loc.id)) continue;
+      this.buildOneLocation(loc);
     }
+  }
+
+  private buildOneLocation(loc: WorldLocation): void {
+    this.renderedLocationIds.add(loc.id);
+
+    const height = loc.type === "house" ? 4 : loc.type === "park" ? 0.4 : 6;
+    const size = loc.type === "park" ? 10 : loc.type === "public" ? 8 : 6;
+    const geometry =
+      loc.type === "park"
+        ? new THREE.CylinderGeometry(size / 2, size / 2, 0.4, 24)
+        : new THREE.BoxGeometry(size, height, size);
+    const material = loc.modern
+      ? new THREE.MeshStandardMaterial({
+          color: MODERN_COLOR,
+          emissive: MODERN_EMISSIVE,
+          emissiveIntensity: 0.6,
+          metalness: 0.4,
+          roughness: 0.25,
+        })
+      : new THREE.MeshStandardMaterial({ color: BUILDING_COLORS[loc.type] });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(loc.x, height / 2, loc.z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    this.scene.add(mesh);
+
+    if (loc.type === "park") {
+      for (let i = 0; i < 6; i++) {
+        const tree = makeTree();
+        const angle = (i / 6) * Math.PI * 2;
+        tree.position.set(loc.x + Math.cos(angle) * 4, 0, loc.z + Math.sin(angle) * 4);
+        this.scene.add(tree);
+      }
+    }
+
+    const label = this.makeLabel(loc.modern ? `✨ ${loc.name}` : loc.name);
+    this.attachLabel(label, () => new THREE.Vector3(loc.x, height + 1.2, loc.z));
+
+    if (this.townHub && loc.id !== this.townHub.id) {
+      this.buildRoad(this.townHub, loc);
+    }
+  }
+
+  private buildRoad(hub: WorldLocation, loc: WorldLocation): void {
+    const roadMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2e });
+    const dx = loc.x - hub.x;
+    const dz = loc.z - hub.z;
+    const length = Math.hypot(dx, dz);
+    const road = new THREE.Mesh(new THREE.PlaneGeometry(length, 2.4), roadMat);
+    road.rotation.x = -Math.PI / 2;
+    road.rotation.z = -Math.atan2(dz, dx);
+    road.position.set(hub.x + dx / 2, 0.01, hub.z + dz / 2);
+    road.receiveShadow = true;
+    this.scene.add(road);
   }
 
   private makeLabel(text: string): HTMLDivElement {

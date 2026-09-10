@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS agents (
   beliefs       TEXT NOT NULL, -- JSON array of strings
   goals         TEXT NOT NULL, -- JSON array of Goal
   money         REAL NOT NULL DEFAULT 0,
+  skill         REAL NOT NULL DEFAULT 0,
   occupation    TEXT,
   home_id       TEXT,
   work_id       TEXT,
@@ -71,6 +72,17 @@ CREATE TABLE IF NOT EXISTS decisions_log (
   source     TEXT NOT NULL -- utility | llm
 );
 CREATE INDEX IF NOT EXISTS idx_decisions_agent ON decisions_log(agent_id, sim_minute DESC);
+
+CREATE TABLE IF NOT EXISTS locations (
+  id             TEXT PRIMARY KEY,
+  name           TEXT NOT NULL,
+  type           TEXT NOT NULL,
+  x              REAL NOT NULL,
+  z              REAL NOT NULL,
+  radius         REAL NOT NULL,
+  modern         INTEGER NOT NULL DEFAULT 0,
+  created_at_min INTEGER NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS world_events (
   id         TEXT PRIMARY KEY,
